@@ -16,6 +16,7 @@ requires-python = ">=3.11"
 dependencies = [
     "torch",
     "numpy",
+    "hydra-core",
 ]
 
 [project.optional-dependencies]
