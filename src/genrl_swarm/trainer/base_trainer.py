@@ -1,9 +1,8 @@
 import abc
 from typing import List, Any
-# from genrl_swarm.reward_manager import RewardManager todo: add reward manager
+from genrl_swarm.rewards import RewardManager
 # from genrl_swarm.data_manager import DataManager todo: add data manager
 # from genrl_swarm.game_state import GameState todo: add game state
-RewardManager = Any
 DataManager = Any
 GameState = Any
 
