@@ -173,5 +173,5 @@ weights/
 *.pth
 
 # Data
-data/
-datasets/
+# data/
+# datasets/

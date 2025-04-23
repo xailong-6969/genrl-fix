@@ -17,6 +17,8 @@ dependencies = [
     "torch",
     "numpy",
     "hydra-core",
+    "datasets",
+    "transformers",
 ]
 
 [project.optional-dependencies]
