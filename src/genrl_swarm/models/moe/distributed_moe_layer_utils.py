@@ -6,6 +6,7 @@ import torch.distributed as dist
 import torch.nn.functional as F
 
 from ._modeling_qwen2_moe import Qwen2MoeForCausalLM, Qwen2MoeSparseMoeBlock
+from .moe_generate import moe_generate
 
 
 class _AllDispatch(torch.autograd.Function):
@@ -388,10 +389,15 @@ class DistributedMoEContext:
     ):
         super().__init__()
         self.moe_model = moe_model
+        self.orig_generate = None
         self.top_k = top_k
         self.pg = pg
 
     def __enter__(self):
+        # Patch generation function in MoE model with the distributed version.
+        self.orig_generate = getattr(self.moe_model, "generate", None)
+        self.moe_model.generate = moe_generate(self.moe_model, self.pg)
+
         # Wrap sparse MoE layers with the distributed MoE layer.
         for layer in self.moe_model.model.layers:
             if isinstance(layer.mlp, Qwen2MoeSparseMoeBlock):
@@ -406,6 +412,8 @@ class DistributedMoEContext:
         traceback: Optional[TracebackType],
     ) -> None:
         # Unwrap the distributed MoE layers and replace with local layers.
+        self.moe_model.generate = self.orig_generate
+
         for layer in self.moe_model.model.layers:
             if isinstance(layer.mlp, _DistributedQwen2MoeSparseMoeBlock):
                 # Overwrite the local expert gate with the corresponding tensor from
