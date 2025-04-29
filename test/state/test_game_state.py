@@ -37,10 +37,13 @@ class TestGameState(TestCase):
                 self.assertEqual(len(self.state.outputs[i][j]), 2) # each batch has 2 stages now
 
     def test_advance_round(self) -> None:
-        self.state.advance_round()
+        dummy_data = torch.randint(0, 100, (self.batch_size, 10))
+        self.state.advance_round(dummy_data)
         self.assertEqual(self.state.round, 1)
         self.assertEqual(self.state.stage, 0)
+        self.assertEqual(self.state.batch_size, self.batch_size)
         for i in range(self.swarm_size):
+            self.assertEqual(len(self.state.outputs[i]), self.batch_size) # each agent has batch size of 5, so the list should be length 5
             for j in range(self.batch_size):
                 self.assertEqual(len(self.state.outputs[i][j]), 1) # each batch's stages have been reset, on 1st stage currently
         

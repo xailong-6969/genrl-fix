@@ -46,7 +46,9 @@ class GameState:
             for batch in range(self.batch_size):
                 self.outputs[agent][batch].append([])
 
-    def advance_round(self) -> None:
+    def advance_round(self, round_data: Any) -> None:
         self.round += 1
         self.stage = 0
+        self.round_data = round_data
+        self.batch_size = len(round_data)
         self.outputs = self._init_agent_batch_stage_grid()
