@@ -47,3 +47,37 @@ class TestGameState(TestCase):
             for j in range(self.batch_size):
                 self.assertEqual(len(self.state.outputs[i][j]), 1) # each batch's stages have been reset, on 1st stage currently
         
+    def test_get_latest(self) -> None:
+        # Test with no generations (stage = 0)
+        result = self.state.get_latest()
+        self.assertIsNone(result)
+        
+        # Test with tensor generations
+        tensor_generation = torch.randint(0, 100, (self.batch_size, 20))
+        self.state.append_generation(tensor_generation)
+        self.state.advance_stage()
+        
+        result = self.state.get_latest()
+        self.assertEqual(len(result), self.batch_size)
+        for i in range(self.batch_size):
+            self.assertEqual(result[i], tensor_generation[i].tolist())
+        
+        # Test with text/object generations
+        text_generations = [{'text': f'This is text {i}', 'score': i * 0.1} for i in range(self.batch_size)]
+        self.state.append_generation(text_generations)
+        self.state.advance_stage()
+        
+        result = self.state.get_latest()
+        self.assertEqual(len(result), self.batch_size)
+        for i in range(self.batch_size):
+            self.assertEqual(result[i], text_generations[i])
+        
+        # Test with single item (not a list)
+        single_item_state = GameState(0, 0, ["single_item"], None)
+        single_generation = ["generated output"]
+        single_item_state.append_generation(single_generation)
+        single_item_state.advance_stage()
+        
+        result = single_item_state.get_latest()
+        self.assertEqual(result, "generated output")
+        

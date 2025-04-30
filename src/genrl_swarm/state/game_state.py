@@ -40,6 +40,23 @@ class GameState:
         for i, output in enumerate(outputs):
             self.outputs[0][i][-1].append(output) # TODO: agent-0, batch-i, last stage, should we track our agent-id or assume idx 0?
 
+    def get_latest(self) -> Any:
+        """Returns the generations from the latest stage.
+        
+        Returns:
+            Any: The latest generated outputs from the current stage.
+        """
+        # Get the last generation from each batch for the current agent (assumed to be 0)
+        if self.stage > 0 and self.outputs and len(self.outputs) > 0:
+            # Access the last element of the previous stage (current stage - 1)
+            stage_idx = self.stage - 1
+            latest_outputs = []
+            for batch_idx in range(self.batch_size):
+                if len(self.outputs[0][batch_idx]) > stage_idx and self.outputs[0][batch_idx][stage_idx]:
+                    latest_outputs.extend(self.outputs[0][batch_idx][stage_idx])
+            return latest_outputs[0] if len(latest_outputs) == 1 else latest_outputs
+        return None
+
     def advance_stage(self) -> None:
         self.stage += 1
         for agent in range(self.swarm_size):
