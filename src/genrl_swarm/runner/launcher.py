@@ -6,11 +6,10 @@ from typing import Optional, Type
 import hydra
 import torch
 import torch.distributed
+from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from torch.distributed.elastic.multiprocessing.errors import record
-
-
-_LOG = logging.getLogger(__name__)
+from genrl_swarm.runner.global_defs import get_logger
 
 
 @dataclass
@@ -46,20 +45,29 @@ def _main(cfg: DictConfig):
             # Assume log_dir is in shared volume.
             os.makedirs(log_dir, exist_ok=True)
         torch.distributed.barrier()
-
+        format_msg = f"[{rank}] %(asctime)s %(levelname)s: %(message)s"
+        logging.basicConfig(
+            level=logging.INFO, 
+            format=format_msg
+        )
+        formatter = logging.Formatter(format_msg)
         file_handler = logging.FileHandler(
             os.path.join(log_dir, f"training_{rank}.log")
         )
+        file_handler.setFormatter(formatter)
+        # TODO(jkolehm): have logging level specified in the hydra config.
+        _LOG = get_logger()
         _LOG.addHandler(file_handler)
 
         if rank == 0:
             _LOG.info(OmegaConf.to_yaml(cfg))
-            _LOG.info(f"Using communication backend: {backend}.")
-        torch.distributed.barrier()
-        _LOG.info(
+            _LOG.info(f"Using communication backend: {backend} with {world_size} workers.")
+        _LOG.debug(
             f"Launching distributed training with {local_rank=} {rank=} {world_size=}."
         )
-        # TODO(jkolehm): call game manager to start the actual training.
+        game_manager = instantiate(cfg.game_manager)
+        game_manager.run_game()
+        _LOG.debug(f"Finished training on {local_rank=} {rank=}.")
 
 
 @hydra.main(version_base=None)
