@@ -1,3 +1,3 @@
-from .base_trainer import BaseTrainer
+from .base_trainer import TrainerModule
 
-__all__ = ["BaseTrainer"]
+__all__ = ["TrainerModule"]
