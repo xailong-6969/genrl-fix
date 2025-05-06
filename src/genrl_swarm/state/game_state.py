@@ -1,7 +1,9 @@
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any, List, Callable, Optional
 from torch import Tensor
 from numpy import ndarray
+
+
 @dataclass
 class GameState:
     round: int
@@ -9,6 +11,7 @@ class GameState:
     round_data: Any
     outputs: List[List[List[List[Any]]]] | None # [Agent][Batch][Stage][Generation]
     swarm_size: int=1 # Number of agents
+    rank: int = 0  # Current rank in distributed setup
 
     def __post_init__(self) -> None:
         if self.round < 0:
@@ -20,7 +23,7 @@ class GameState:
             self.batch_size = len(self.round_data)
         else:
             self.batch_size = 0
-        
+
         if self.outputs is None:
             self.outputs = self._init_agent_batch_stage_grid()
 
@@ -37,8 +40,11 @@ class GameState:
     def append_generation(self, outputs: Any) -> None:
         if isinstance(outputs, (Tensor, ndarray)):
             outputs = outputs.tolist()
-        for i, output in enumerate(outputs):
-            self.outputs[0][i][-1].append(output) # TODO: agent-0, batch-i, last stage, should we track our agent-id or assume idx 0?
+
+        for i, agent_responses in enumerate(outputs):
+            for j, batch in enumerate(agent_responses):
+                for generation in batch:
+                    self.outputs[i][j][-1].append(generation)
 
     def get_latest(self) -> Any:
         """Returns the generations from the latest stage.
@@ -51,10 +57,15 @@ class GameState:
             # Access the last element of the previous stage (current stage - 1)
             stage_idx = self.stage - 1
             latest_outputs = []
-            for batch_idx in range(self.batch_size):
-                if len(self.outputs[0][batch_idx]) > stage_idx and self.outputs[0][batch_idx][stage_idx]:
-                    latest_outputs.extend(self.outputs[0][batch_idx][stage_idx])
-            return latest_outputs[0] if len(latest_outputs) == 1 else latest_outputs
+            for agent_idx in range(self.swarm_size):
+                agent_batches = []
+                for batch_idx in range(self.batch_size):
+                    batch_generations = []
+                    if len(self.outputs[agent_idx][batch_idx]) > stage_idx and self.outputs[agent_idx][batch_idx][stage_idx]:
+                        batch_generations.extend(self.outputs[agent_idx][batch_idx][stage_idx])
+                    agent_batches.append(batch_generations)
+                latest_outputs.append(agent_batches)
+            return latest_outputs
         return None
 
     def advance_stage(self) -> None:
