@@ -14,6 +14,10 @@ class RewardManager(abc.ABC):
     def reset(self) -> None:
         pass
 
+    @abc.abstractmethod
+    def __call__(self) -> Any:
+        pass
+
 
 class DefaultRewardManager(RewardManager):
     def __init__(self, reward_fn_store: RewardFnStore):
