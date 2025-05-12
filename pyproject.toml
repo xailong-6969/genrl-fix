@@ -19,6 +19,7 @@ dependencies = [
     "hydra-core",
     "datasets",
     "transformers",
+    "tensorboard",
 ]
 
 [project.optional-dependencies]
@@ -27,3 +28,5 @@ dev = [
     "isort",
     "pytest",
 ]
+
+examples = ["trl"]

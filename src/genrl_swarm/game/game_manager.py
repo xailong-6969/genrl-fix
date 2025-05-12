@@ -101,7 +101,7 @@ class BaseGameManager(GameManager):
                   "role_manager":role_manager, 
                   "run_mode":run_mode
                   }
-        super.__init__(**kwargs)
+        super().__init__(**kwargs)
 
     def end_of_game(self) -> bool:
         if self.state.round > self.max_round:
