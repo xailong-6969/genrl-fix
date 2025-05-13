@@ -81,6 +81,39 @@ class TestGameState(TestCase):
         
         result = single_item_state.get_latest()
         self.assertEqual(result[0][0][0], "generated output")
+    
+    def test_convert_to_nested_lists(self) -> None:
+        #Test on a newly initialized set of outputs
+        result = self.state.convert_to_nested_lists()
+        expected = [[[[] for stage in self.state.outputs[agent][batch]] for batch in self.batch_size] for agent in range(self.swarm_size)] 
+        self.assertEqual(result, expected)
+
+        #Test when there are generations
+        generation = torch.randint(0, 100, (self.swarm_size, self.batch_size, 1, 20)) #generate 20 tokens for each of the 5 batch samples for a single stage
+        generation2 = torch.randint(0, 100, (self.swarm_size, self.batch_size, 1, 20))
+        self.state.append_generation(generation)
+        self.state.append_generation(generation2)
+        result = self.state.convert_to_nested_lists()
+        for i in range(self.swarm_size):
+            for j in range(self.batch_size):
+                self.assertEqual(self.state.outputs[i][j][0][0], result[i][j][0][0])
+                self.assertEqual(self.state.outputs[i][j][0][1], result[i][j][0][1])
+                self.assertTrue(len(result[i][j][0]) == 2)
+        
+        #Test with multiple stages too
+        self.state.advance_stage()
+        self.state.append_generation(generation)
+        self.state.append_generation(generation2)
+        result = self.state.convert_to_nested_lists()
+        for i in range(self.swarm_size):
+            for j in range(self.batch_size):
+                self.assertEqual(self.state.outputs[i][j][self.state.stage][0], result[i][j][self.state.stage][0])
+                self.assertEqual(self.state.outputs[i][j][self.state.stage][1], result[i][j][self.state.stage][1])
+                self.assertTrue(len(result[i][j][self.state.stage]) == 2)
+
+        #test when output in a None
+        self.state.outputs = None
+        self.assertIsNone(self.state.convert_to_nested_lists())
         
     def test_multi_agent(self) -> None:
         swarm_size = 4
