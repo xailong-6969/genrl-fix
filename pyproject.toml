@@ -20,7 +20,7 @@ dependencies = [
     "datasets",
     "transformers",
     "tensorboard",
-    "hivemind",
+    "hivemind @ git+https://github.com/learning-at-home/hivemind@1.11.11",
 ]
 
 [project.optional-dependencies]

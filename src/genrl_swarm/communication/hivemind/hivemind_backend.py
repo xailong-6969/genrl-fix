@@ -3,9 +3,42 @@ import pickle
 import time
 from typing import Any, List, Sequence
 
+import torch.distributed as dist
 from hivemind import DHT, get_dht_time
 
 from genrl_swarm.communication.communication import Communication
+
+
+class HivemindRendezvouz:
+    _STORE = None
+    _IS_MASTER = False
+
+    @classmethod
+    def init(cls, is_master: bool = False):
+        if cls._STORE is None:
+            cls._IS_MASTER = is_master
+            cls._STORE = dist.TCPStore(
+                host_name=os.environ["MASTER_ADDR"],
+                port=int(os.environ["MASTER_PORT"]),
+                is_master=is_master,
+            )
+
+    @classmethod
+    def is_bootstrap(cls) -> bool:
+        return cls._IS_MASTER
+
+    @classmethod
+    def set_initial_peers(cls, initial_peers):
+        if cls._STORE is None:
+            cls.init()
+        cls._STORE.set("initial_peers", pickle.dumps(initial_peers))
+
+    @classmethod
+    def get_initial_peers(cls):
+        if cls._STORE is None:
+            cls.init()
+        peer_bytes = cls._STORE.get("initial_peers")
+        return pickle.loads(peer_bytes)
 
 
 class HivemindBackend(Communication):
@@ -13,22 +46,23 @@ class HivemindBackend(Communication):
         self,
         initial_peers: List[str] | None = None,
         timeout: int = 600,
-        bootstrap=False,
     ):
         self.world_size = int(os.environ["WORLD_SIZE"])
         self.timeout = timeout
         self.initial_peers = initial_peers
+        bootstrap = HivemindRendezvouz.is_bootstrap()
         if bootstrap:
             self.dht = DHT(
                 start=True,
                 host_maddrs=[f"/ip4/0.0.0.0/tcp/0", "/ip4/0.0.0.0/udp/0/quic"],
             )
-            self.initial_peers = self.dht.get_visible_maddrs()
+            HivemindRendezvouz.set_initial_peers(self.dht.get_visible_maddrs())
         else:
             self.dht = DHT(
                 start=True,
                 host_maddrs=[f"/ip4/0.0.0.0/tcp/0", "/ip4/0.0.0.0/udp/0/quic"],
-                initial_peers=self.initial_peers,
+                initial_peers=self.initial_peers
+                or HivemindRendezvouz.get_initial_peers(),
             )
         self.step_ = 0
 

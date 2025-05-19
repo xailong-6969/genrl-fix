@@ -1,23 +1,16 @@
 import os
-import pickle
 
 import pytest
-import torch.distributed as dist
 import torch.multiprocessing as mp
 
-from genrl_swarm.communication.hivemind.hivemind_backend import HivemindBackend
+from genrl_swarm.communication.hivemind.hivemind_backend import (
+    HivemindBackend, HivemindRendezvouz)
 
 
-def _test_hivemind_backend(rank, tmp_path, world_size):
-    store = dist.FileStore(tmp_path, world_size)
-    if rank == 0:
-        backend = HivemindBackend(timeout=5, bootstrap=True)
-        peers = pickle.dumps(backend.initial_peers)
-        store.set("initial_peers", peers)
-    else:
-        peers = store.get("initial_peers")
-        initial_peers = pickle.loads(peers)
-        backend = HivemindBackend(initial_peers=initial_peers, timeout=5)
+def _test_hivemind_backend(rank, world_size):
+    HivemindRendezvouz.init(is_master=rank == 0)
+
+    backend = HivemindBackend(timeout=5)
     obj = [rank]
     gathered_obj = backend.all_gather_object(obj)
     assert len(gathered_obj) == world_size
@@ -26,14 +19,13 @@ def _test_hivemind_backend(rank, tmp_path, world_size):
 
 
 @pytest.mark.parametrize("world_size", [1, 2])
-def test_hivemind_backend(tmp_path, world_size):
+def test_hivemind_backend(world_size):
     os.environ["WORLD_SIZE"] = str(world_size)
+    os.environ["MASTER_ADDR"] = "127.0.0.1"
+    os.environ["MASTER_PORT"] = "29400"
     mp.spawn(
         _test_hivemind_backend,
-        args=(
-            os.path.join(tmp_path, "file"),
-            world_size,
-        ),
+        args=(world_size,),
         nprocs=world_size,
         join=True,
         daemon=False,
