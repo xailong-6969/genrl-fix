@@ -16,6 +16,7 @@ class RoundRewardFnStore:
             raise ValueError("num_stages must be a positive integer")
 
         # if no reward functions provided, default to null rewards
+        #TODO(discuss): Should definitely trigger a big ol' warning to make sure people know they are hitting this case and proceeding anyhow
         if self.reward_fns is None or len(self.reward_fns) == 0:
             self.reward_fns = [lambda x: 0 for _ in range(self.num_stages)]
 
