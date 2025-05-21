@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Callable, Union, Iterable, Dict
+from typing import Any, Callable, Union, Iterable, Dict, List
 from genrl_swarm.rewards.reward_store import RewardFnStore
 # from genrl_swarm.game_state import GameState todo: add game state
 GameState = Any
@@ -23,7 +23,7 @@ class DefaultRewardManager(RewardManager):
     def __init__(self, reward_fn_store: RewardFnStore):
         self._round = 0
         self._stage = 0
-        self._rewards = None
+        self._rewards: List[Any] = []
         self.reward_fn_store = reward_fn_store
 
     @property
@@ -47,19 +47,31 @@ class DefaultRewardManager(RewardManager):
         self._stage = value
 
     @property
-    def rewards(self) -> Union[Iterable, Dict]:
+    def rewards(self) -> List[Any]:
         return self._rewards
 
     @rewards.setter
-    def rewards(self, value: Union[Iterable, Dict]) -> None:
+    def rewards(self, value: List[Any]) -> None:
+        if not isinstance(value, list):
+            raise TypeError(f"Expected rewards to be a list, but got {type(value)}")
         self._rewards = value
 
+    def __getitem__(self, stage: int) -> Any:
+        if stage >= len(self._rewards):
+            raise IndexError(f"Stage {stage} is out of bounds for rewards list of length {len(self._rewards)}")
+        return self._rewards[stage]
+    
+    def set_stage_rewards(self, stage: int, rewards: Any) -> None:
+        if stage >= len(self._rewards):
+            raise IndexError(f"Stage {stage} is out of bounds for rewards list of length {len(self._rewards)}")
+        self._rewards[stage] = rewards
+    
     def set_round_stage(self, round: int, stage: int) -> None:
         self.round = round
         self.stage = stage
 
     def dispatch_reward_fn(self, round: int, stage: int) -> Callable:
-        return self.reward_fn_store[round][stage]
+        return self.reward_fn_store[round].reward_fns[stage]
 
     def __call__(self, round: int, stage: int, game_state: GameState) -> Union[Iterable, Dict]:
         """
@@ -68,12 +80,14 @@ class DefaultRewardManager(RewardManager):
         """
         reward_fn = self.dispatch_reward_fn(round, stage)
         rewards = reward_fn(game_state)
-        self.rewards = rewards
+        self.set_stage_rewards(stage, rewards)
         return rewards
 
     def reset(self) -> None:
         self._stage = 0
-        self._rewards = None
+        self._rewards = []
 
     def update_rewards(self, game_state: GameState) -> None:
-        self.__call__(game_state.round, game_state.stage, game_state)
+        for stage in range(game_state.stage):
+            self.__call__(game_state.round, stage, game_state)
+
