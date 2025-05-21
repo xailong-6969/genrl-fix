@@ -1,6 +1,6 @@
 import abc
 
-from typing import Any, List
+from typing import Any, List, Tuple, Dict, Callable
 
 from genrl_swarm.state import GameState, GameNode
 from genrl_swarm.rewards import RewardManager
@@ -41,6 +41,46 @@ class GameManager(abc.ABC): #TODO: Make this use enum
         """
         pass
 
+    #Helper methods
+    def aggregate_game_state_methods(self) -> Tuple[Dict[str, Callable], Dict[str, Callable]]:
+        world_state_pruners = {"environment_pruner": getattr(self, "environment_state_pruner", None),
+                               "opponent_pruner": getattr(self, "opponent_state_pruner", None), 
+                               "personal_pruner": getattr(self, "personal_state_pruner", None)
+                               }
+        game_tree_brancher = {"terminal_node_decision_function": getattr(self, "terminal_game_tree_node_decider", None), 
+                              "stage_inheritance_function": getattr(self, "stage_inheritance_function", None)
+                              }
+        return world_state_pruners, game_tree_brancher
+    
+    #Core (default) game orchestration methods
+    def run_game_stage(self):
+        inputs = self.state.get_latest_state() # Fetches the current world state for all agents
+        outputs = self.trainer.generate(inputs) # Generates a rollout. Ingests inputs indexable in the following way [Agent][Batch Item][Nodes idx within current stage][World state] then outputs something indexable as [Agent][Batch Item][Nodes idx within current stage]
+        self.state.append_generation(outputs) # Adds the freshly generated rollout to the game state associated with this agent's nodes at this stage
+
+    def run_game_round(self):
+        # Loop through stages until end of round is hit
+        while not self.end_of_round():
+            self.run_game_stage() # Generates rollout and updates the game state
+            world_states = self.communication.all_gather(self.state) #TODO(jari): Leaving as a placeholder for now
+            self.state.advance_stage(world_states) # Prepare for next stage
+        self.rewards.update_rewards(self.state) # Compute reward functions now that we have all the data needed for this round
+        if self.mode in ['train', 'train_and_evaluate']:
+            self.trainer.train(self.state, self.rewards)
+        if self.mode in ['evaluate', 'train_and_evaluate']:
+            self.trainer.evaluate(self.data_manager, self.rewards)
+        self.state.advance_round(self.data_manager.get_round_data()) # Resets the game state appropriately, stages the next round, and increments round/stage counters appropriatelly
+
+    def run_game(self):
+        # Initialize game and/or run specific details of game state
+        world_state_pruners, game_tree_brancher = self.aggregate_game_state_methods()
+        self.state._init_game(self.data_manager.get_round_data(), world_state_pruners=world_state_pruners, game_tree_brancher=game_tree_brancher) # Prepare game trees within the game state for the initial round's batch of data
+        
+        # Loop through rounds until end of the game is hit
+        while not self.end_of_game():
+            self.run_game_round() # Loops through stages until end of round signal is received
+
+class DefaultGameManagerMixin: #TODO: Add basic functionality to these methods!
     #Optional methods
     def environment_state_pruner(self) -> Any:
         """
@@ -84,35 +124,6 @@ class GameManager(abc.ABC): #TODO: Make this use enum
         """
         #TODO(discuss): Need to explain this better... How do we make it more intuitive?
         pass
-
-    #Core (default) game orchestration methods
-    def run_game_stage(self):
-        inputs = self.state.get_latest_state() # Fetches the current world state for all agents
-        outputs = self.trainer.generate(inputs) # Generates a rollout. Ingests inputs indexable in the following way [Agent][Batch Item][Nodes idx within current stage][World state] then outputs something indexable as [Agent][Batch Item][Nodes idx within current stage]
-        self.state.append_generation(outputs) # Adds the freshly generated rollout to the game state associated with this agent's nodes at this stage
-
-    def run_game_round(self):
-        # Loop through stages until end of round is hit
-        while not self.end_of_round():
-            self.run_game_stage() # Generates rollout and updates the game state
-            world_states = self.communication.all_gather(self.state) #TODO(jari): Leaving as a placeholder for now
-            self.state.advance_stage(world_states) # Prepare for next stage
-        self.rewards.update_rewards(self.state) # Compute reward functions now that we have all the data needed for this round
-        if self.mode in ['train', 'train_and_evaluate']:
-            self.trainer.train(self.state, self.rewards)
-        if self.mode in ['evaluate', 'train_and_evaluate']:
-            self.trainer.evaluate(self.data_manager, self.rewards)
-        self.state.advance_round(self.data_manager.get_round_data()) # Resets the game state appropriately, stages the next round, and increments round/stage counters appropriatelly
-
-    def run_game(self):
-        # Initialize game and/or run specific details of game state
-        world_state_pruners = {"environment_pruner": self.environment_state_pruner, "opponent_pruner": self.opponent_state_pruner, "personal_pruner": self.personal_state_pruner}
-        game_tree_brancher = {"terminal_node_decision_function": self.terminal_game_tree_node_decider, "stage_inheritance_function": self.stage_inheritance_function}
-        self.state._init_game(self.data_manager.get_round_data(), world_state_pruners=world_state_pruners, game_tree_brancher=game_tree_brancher) # Prepare game trees within the game state for the initial round's batch of data
-        
-        # Loop through rounds until end of the game is hit
-        while not self.end_of_game():
-            self.run_game_round() # Loops through stages until end of round signal is received
 
 
 class BaseGameManager(GameManager):
