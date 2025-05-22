@@ -66,6 +66,7 @@ def _main(cfg: DictConfig):
             f"Launching distributed training with {local_rank=} {rank=} {world_size=}."
         )
         game_manager = instantiate(cfg.game_manager)
+        game_manager.rank = rank
         game_manager.run_game()
         _LOG.debug(f"Finished training on {local_rank=} {rank=}.")
 

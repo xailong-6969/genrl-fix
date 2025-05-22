@@ -60,12 +60,7 @@ class DefaultRewardManager(RewardManager):
         if stage >= len(self._rewards):
             raise IndexError(f"Stage {stage} is out of bounds for rewards list of length {len(self._rewards)}")
         return self._rewards[stage]
-    
-    def set_stage_rewards(self, stage: int, rewards: Any) -> None:
-        if stage >= len(self._rewards):
-            raise IndexError(f"Stage {stage} is out of bounds for rewards list of length {len(self._rewards)}")
-        self._rewards[stage] = rewards
-    
+
     def set_round_stage(self, round: int, stage: int) -> None:
         self.round = round
         self.stage = stage
@@ -80,7 +75,7 @@ class DefaultRewardManager(RewardManager):
         """
         reward_fn = self.dispatch_reward_fn(round, stage)
         rewards = reward_fn(game_state)
-        self.set_stage_rewards(stage, rewards)
+        self.rewards.append(rewards)
         return rewards
 
     def reset(self) -> None:
@@ -90,4 +85,5 @@ class DefaultRewardManager(RewardManager):
     def update_rewards(self, game_state: GameState) -> None:
         for stage in range(game_state.stage):
             self.__call__(game_state.round, stage, game_state)
-
+        self.round += 1
+            

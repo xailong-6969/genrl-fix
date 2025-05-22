@@ -30,4 +30,4 @@ dev = [
     "pytest",
 ]
 
-examples = ["trl"]
+examples = ["trl", "diffusers", "peft"]

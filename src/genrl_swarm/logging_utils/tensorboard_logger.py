@@ -25,9 +25,8 @@ class ImageLoggerMixin(TensorboardLoggerMixin):
     def log_images(self, images, prompts, global_step):
         result = {}
         for image, prompt in zip(images, prompts):
-            result[f"{prompt}"] = image.numpy()[None, ...]
-
-        self.tracker.log_images(
-            result,
-            step=global_step,
-        )
+            result[f"{prompt}"] = image
+            
+        for k, v in result.items():
+            self.tracker.add_image(k, v, global_step=global_step)
+        self.tracker.flush()

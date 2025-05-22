@@ -7,7 +7,6 @@ class GameState:
     round: int
     stage: int
     swarm_size: int = 1 # Number of agents
-    rank: int = 0  # Current rank in distributed setup
 
     trees: Dict[Any, Dict[int, Callable]] | None = None # [Agent][Batch][GameTree]    
     game_tree_factory: GameTree = DefaultGameTree #GameTree data structure to use for building tree
@@ -51,7 +50,7 @@ class GameState:
         self.stage = 0
         self._init_game(round_data)
         
-    def get_stage_state(self, stage_num: int) -> Dict[Any, List[List[Tuple[Any]]]]:
+    def get_stage_state(self, stage_num: int) -> Dict[Any, List[List[List[Any]]]]:
         """
         Returns required state information for preparing a data batch from the desired stage
         
@@ -68,10 +67,10 @@ class GameState:
                     batch_states = []
                     batch_nodes = self.trees[agent_idx][batch_idx][stage_num]
                     for node_idx in range(len(batch_nodes)):
-                        world_state = (batch_nodes[node_idx]['environment_states'], 
+                        world_state = [batch_nodes[node_idx]['environment_states'], 
                                        batch_nodes[node_idx]['opponent_states'], 
                                        batch_nodes[node_idx]['personal_states']
-                                       )
+                                       ]
                         batch_states.append(world_state)
                     agents[agent_idx].append(batch_states)
             return agents # [Agents][Batch][Node Idx in Stage][World State]
@@ -102,7 +101,7 @@ class GameState:
         else:
             raise RuntimeError("Trying to get game state information, but game trees are not defined.")
         
-    def get_latest_state(self) -> Dict[Any, List[List[Tuple[Any]]]]: 
+    def get_latest_state(self) -> Dict[Any, List[List[List[Any]]]]: 
         """Get stage state for current stage of the game"""
         return self.get_stage_state(self.stage) # [Agents][Batch][Nodes in Current Stage][World State]
     
@@ -110,7 +109,7 @@ class GameState:
         """Get stage state for current stage of the game"""
         return self.get_stage_actions(self.stage) # [Agents][Batch][Node Idx in Current Stage]
     
-    def append_generation(self, agent_actions: Dict[Any, List[List[Any]]]) -> List[bool]: 
+    def append_actions(self, agent_actions: Dict[Any, List[List[Any]]]) -> List[bool]: 
         """
         Takes outputs generated/made by an agent and appends it to the corresponding nodes
         At a high-level this method performs the following operations:

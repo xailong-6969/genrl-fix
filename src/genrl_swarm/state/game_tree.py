@@ -250,6 +250,8 @@ class DefaultGameTree(GameTree):
         #Determine if nodes should be considered terminal now that this stage of the tree is concluding
         if tree_branching_functions['terminal_node_decision_function'] is not None: #Terminal decision fxn was provided
             terminal_nodes = tree_branching_functions['terminal_node_decision_function'](stage_nodes) #Returns list of terminal nodes
+            if terminal_nodes is None:
+                terminal_nodes = []
             for node in terminal_nodes:
                 node.set_as_terminal() 
                 self.leaf_nodes.append(node)
