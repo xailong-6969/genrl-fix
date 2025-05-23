@@ -1,7 +1,6 @@
-
 import os
 from collections import defaultdict
-from typing import Any, List
+from typing import Any, List, Dict, Tuple
 
 import torch
 import torch.utils.data
@@ -12,6 +11,7 @@ from transformers import (
     GenerationConfig,
     Trainer,
 )
+from transformers.utils import is_sagemaker_mp_enabled, is_accelerate_available
 
 from genrl_swarm.trainer import TrainerModule
 from genrl_swarm.rewards import RewardManager
@@ -21,7 +21,10 @@ from genrl_swarm.logging_utils.tensorboard_logger import TensorboardLoggerMixin
 from trl.trainer.utils import selective_log_softmax
 from trl.trainer.grpo_config import GRPOConfig
 from trl.models import create_reference_model
+from trl.data_utils import apply_chat_template
 
+if is_accelerate_available():
+    from accelerate.utils import DistributedType
 
 class GRPOTrainerModule(TrainerModule, TensorboardLoggerMixin):
     """
@@ -41,7 +44,7 @@ class GRPOTrainerModule(TrainerModule, TensorboardLoggerMixin):
         if not models or len(models) < 1:
             raise ValueError("At least one model must be provided")
         
-        self.model = models[0] #TODO(johnny): how to pick model?
+        self.model = models[0] #TODO(johnny): how to pick model? #TODO(Discuss): How to settup multiple models here? Should be tethered to agent index that'll be given by gamestate. Maybe loop here and add a lil model ID datum to the gamestate?
         
         # Configuration parameters
         config = kwargs.get("config", None)
@@ -53,7 +56,9 @@ class GRPOTrainerModule(TrainerModule, TensorboardLoggerMixin):
         # Additional parameters
         self.callbacks = kwargs.get("callbacks", [])
         self.save_dir = kwargs.get("save_dir", "./output")
-        
+        self.global_step = 0
+        self.num_generations = kwargs.get("num_generations", 1)
+
         # Initialize core components
         self._initialize_model()
         self._initialize_tokenizers()
@@ -72,7 +77,7 @@ class GRPOTrainerModule(TrainerModule, TensorboardLoggerMixin):
         if self.beta == 0.0:
             self.ref_model = None
         else:
-            self.ref_model = create_reference_model(self.model)
+            self.ref_model = create_reference_model(self.model).to(self.model.device)
     
     def _initialize_tokenizers(self):
         """Initialize tokenizers for the model and reward models."""
@@ -100,46 +105,78 @@ class GRPOTrainerModule(TrainerModule, TensorboardLoggerMixin):
             top_k=self.args.top_k,
             min_p=self.args.min_p,
             repetition_penalty=self.args.repetition_penalty,
+            num_return_sequences=self.num_generations #TODO: CONFIRM THIS WORKS AS EXPECTED!!!! Currently set to default value
         )
 
     def _initialize_trainer(self):
         self.trainer = Trainer(
             model=self.model,
             args=self.args,
-            tokenizer=self.processing_class,
+            processing_class=self.processing_class,
             callbacks=self.callbacks,
+            optimizers=(torch.optim.Adam(self.model.parameters(), lr=self.args.learning_rate), None)
         )
         self.trainer.compute_loss = self.compute_loss
-    
-    def generate(self, inputs: Any) -> Any:
-        if isinstance(inputs, str):
+
+    def _process_inputs(self, inputs, with_template=True):
+        if hasattr(inputs, 'to_dict'):
+            inputs = [dict(inputs[i]) for i in range(len(inputs))]
+        elif isinstance(inputs, dict):
             inputs = [inputs]
-        
+
+        if with_template:
+            templated_prompts = [apply_chat_template(item, self.processing_class)['prompt'] for item in inputs]
+        else:
+            templated_prompts = []
+            for generations in inputs:
+                for output in generations:
+                    templated_prompts.append(output) #[item[0] for item in inputs]
+
         input_tokens = self.processing_class(
-            text=inputs,
+            text=templated_prompts,
             return_tensors="pt",
             padding=True,
             truncation=True,
             max_length=self.args.max_prompt_length,
         )
+        return input_tokens
+
+    def generate(self, inputs: Any, return_completion_ids:bool = False, stage=0) -> Any:
+        """
+        Generate outputs from the model for the given inputs.
+        
+        Args:
+            inputs: Input data for generation
+            return_completion_ids: Whether to return completion IDs along with text
+            stage: Current stage (0, 1, or 2) for proper output formatting
+            
+        Returns:
+            Generated outputs in the format expected by the next stage
+        """   
+        input_tokens = self._process_inputs(inputs)
         
         with torch.no_grad():
             outputs = self.model.generate(
-                input_tokens.input_ids,
-                attention_mask=input_tokens.attention_mask,
+                input_tokens.input_ids.to(self.model.device),
+                attention_mask=input_tokens.attention_mask.to(self.model.device),
                 generation_config=self.generation_config,
             )
             
-        # Extract completions (remove prompt part)
+        # # Extract completions (remove prompt part)
         prompt_length = input_tokens.input_ids.size(1)
-        completion_ids = outputs[:, prompt_length:]
-        
+        completion_ids = outputs[:, prompt_length:] # TODO: this is broken, not splitting in the correct place
+
         completions = self.processing_class.batch_decode(
             completion_ids, 
             skip_special_tokens=True
         )
-        
-        return completions, completion_ids
+        if isinstance(completions[0], str):
+            completions = [[x] for x in completions] #todo: G generations per prompt GRPO
+
+        if return_completion_ids:
+            return completions, completion_ids
+        else:
+            return completions
     
     def _get_per_token_logps(self, model, input_ids, attention_mask, logits_to_keep):
         """Get the per-token log probabilities for the input tokens.
@@ -153,39 +190,46 @@ class GRPOTrainerModule(TrainerModule, TensorboardLoggerMixin):
         Returns:
             The per-token log probabilities.
         """
+        model = model.to(input_ids.device) #this shouldn't be needed
         # We add 1 to `logits_to_keep` because the last logits of the sequence is later excluded
         logits = model(input_ids=input_ids, attention_mask=attention_mask, logits_to_keep=logits_to_keep + 1).logits
         logits = logits[:, :-1, :]  # (B, L-1, V), exclude the last logit: it corresponds to the next token pred
 
-        input_ids = input_ids[:, -logits_to_keep:]
+
+        loss_mask = attention_mask[:, -logits_to_keep:].to(dtype=logits.dtype).contiguous()
+        labels = input_ids[:, -logits_to_keep:].contiguous()
         # For transformers<=4.48, logits_to_keep argument isn't supported, so here we drop logits ourselves.
-        logits = logits[:, -logits_to_keep:]
+        logits = logits[:, -logits_to_keep:].contiguous()
         # Divide logits by sampling temperature.
         logits = logits / self.args.temperature
-        return selective_log_softmax(logits, input_ids)  # compute logprobs for the input tokens
+        logits_shape = logits.shape
+        token_log_probs = - torch.nn.functional.cross_entropy(
+            logits.view(-1, logits_shape[-1]),
+            labels.view(-1),
+            reduction='none',
+        ).view(logits_shape[0], logits_shape[1])
+        token_log_probs = token_log_probs * loss_mask + (1.0 - loss_mask) * torch.finfo(logits.dtype).min
+        return token_log_probs  # compute logprobs for the input tokens
 
-    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None, mode='train'):
+    def compute_loss(self, model, inputs, num_items_in_batch=1, mode='train', return_metrics=False):
         """Compute the GRPO loss.
         
         Args:
             model: The model to compute the loss for.
             inputs: The inputs containing prompt_ids, prompt_mask, completion_ids, completion_mask,
                     old_per_token_logps, ref_per_token_logps, and advantages.
-            return_outputs: Whether to return the outputs in addition to the loss.
             
         Returns:
-            The loss value, and optionally the outputs.
+            The loss value and metrics.
         """
-        if return_outputs:
-            raise ValueError("The GRPOTrainer does not support returning outputs")
         
         # Extract inputs
         prompt_ids, prompt_mask = inputs["prompt_ids"], inputs["prompt_mask"]
         completion_ids, completion_mask = inputs["completion_ids"], inputs["completion_mask"]
         
         # Concatenate prompt and completion
-        input_ids = torch.cat([prompt_ids, completion_ids], dim=1)
-        attention_mask = torch.cat([prompt_mask, completion_mask], dim=1)
+        input_ids = torch.cat([prompt_ids, completion_ids], dim=1).to(self.model.device)
+        attention_mask = torch.cat([prompt_mask, completion_mask], dim=1).to(self.model.device)
         logits_to_keep = completion_ids.size(1)  # we only need to compute the logits for the completion tokens
         
         # Compute per-token log probabilities
@@ -210,8 +254,10 @@ class GRPOTrainerModule(TrainerModule, TensorboardLoggerMixin):
         # Calculate ratios and loss terms
         coef_1 = torch.exp(per_token_logps - old_per_token_logps)
         coef_2 = torch.clamp(coef_1, 1 - self.args.epsilon, 1 + self.args.epsilon_high if self.args.epsilon_high is not None else self.args.epsilon)
-        per_token_loss1 = coef_1 * advantages.unsqueeze(1)
-        per_token_loss2 = coef_2 * advantages.unsqueeze(1)
+        advantages =  advantages.unsqueeze(dim=-1)
+
+        per_token_loss1 = coef_1 * advantages
+        per_token_loss2 = coef_2 * advantages
         per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
         
         # Add KL penalty if beta > 0
@@ -236,9 +282,13 @@ class GRPOTrainerModule(TrainerModule, TensorboardLoggerMixin):
             "kl": mean_kl.item() if self.beta != 0.0 else None,
             "clip_ratio": clip_ratio.item(),
             }
-        return loss, metrics
 
-    def train(self, game_state: GameState, reward_manager: RewardManager) -> None:
+        if return_metrics:
+            return loss, metrics
+        else:
+            return loss
+ 
+    def train(self, state: GameState, data_manager: DataManager, reward_manager: RewardManager) -> None:
         """
         Train the model using the given game state and reward manager.
         
@@ -248,25 +298,45 @@ class GRPOTrainerModule(TrainerModule, TensorboardLoggerMixin):
         """
         self.model.train()
         global_step = self.global_step
-        global_step = self.step(game_state, reward_manager, global_step)
+        for stage in range(state.stage-1):
+            global_step = self.step(stage, state, data_manager, reward_manager, global_step)
         self.global_step = global_step
         self.model.eval()
 
-    def step(self, game_state: GameState, reward_manager: RewardManager, global_step: int) -> int:
+    def step(self, stage: int, state: GameState, data_manager: DataManager, reward_manager: RewardManager, global_step: int) -> int:
         global_step += 1        
 
-        model_inputs = game_state.get_latest()
+        #Prepare stage's inputs
+        stage_inputs = state.get_stage_state(stage) # Fetches the current world state for all agents
+        stage_inputs, index_mapping = data_manager.prepare_input(stage_inputs, stage) # Maps game tree states to model ingestable inputs
+        assert stage_inputs is not None, f"No inputs found for stage {stage}"
+        #Unflatten stage's outputs
+        stage_actions = state.get_stage_actions(stage)
+        stage_outputs = [stage_actions[index_mapping[idx][0]][index_mapping[idx][1]][index_mapping[idx][2]] for idx, _ in enumerate(index_mapping)]
+        assert stage_outputs is not None, f"No outputs found for stage {stage}"
 
-        rewards = reward_manager(game_state.round, game_state.stage, game_state)
+        model_inputs = {}
+        processed_inputs = self._process_inputs(stage_inputs)
+        model_inputs['prompt_ids'], model_inputs['prompt_mask'] = processed_inputs.input_ids.to(self.model.device), processed_inputs.attention_mask.to(self.model.device)
+        processed_outputs = self._process_inputs(stage_outputs, with_template=False)
+        model_inputs['completion_ids'], model_inputs['completion_mask'] = processed_outputs.input_ids.to(self.model.device), processed_outputs.attention_mask.to(self.model.device)
 
-        advantages = (rewards - rewards.mean()) / (rewards.std() + 1e-8) #TODO(johnny): handle multi-turn
-        model_inputs["advantages"] = advantages
+        rewards = reward_manager[stage]
+        rewards = [rewards[index_mapping[idx][0]][index_mapping[idx][1]][index_mapping[idx][2]] for idx, _ in enumerate(index_mapping)]
+        assert rewards is not None, f"No rewards found for stage {stage}"
+        rewards = torch.tensor(rewards)
+
+        with torch.no_grad():
+            advantages = (rewards - rewards.mean(dim=1, keepdim=True)) 
+            if rewards.shape[0] > 1:
+                advantages /= (rewards.std(dim=1, keepdim=True) + 1e-8)
+
+        model_inputs["advantages"] = advantages.squeeze(dim=-1)
         model_inputs["old_per_token_logps"] = None
 
         do_sync_step = global_step % self.args.gradient_accumulation_steps == 0
         self.trainer.accelerator.gradient_state._set_sync_gradients(do_sync_step)
-        
-        loss, metrics = self.trainer.training_step(self.model, model_inputs)
+        loss = self.trainer.training_step(self.model, model_inputs)
         
         if do_sync_step:
             # Since we perform prefetching, we need to manually set sync_gradients to True
@@ -298,38 +368,39 @@ class GRPOTrainerModule(TrainerModule, TensorboardLoggerMixin):
                         grad_norm = grad_norm.item()
                 else:
                     grad_norm = _grad_norm
-
-            self.optimizer.step()
+            
+            self.trainer.optimizer.step()
 
             if not self.trainer.accelerator.optimizer_step_was_skipped:
                 # Delay optimizer scheduling until metrics are generated
-                if not isinstance(self.trainer.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                if self.trainer.lr_scheduler is not None and not isinstance(self.trainer.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                     self.trainer.lr_scheduler.step()
 
             self.model.zero_grad()
-        
+        metrics = {'train/loss': loss.item()} 
         self.log(metrics, global_step)
 
         return global_step
 
     @torch.no_grad()
-    def evaluate(self, data_manager: DataManager, reward_manager: RewardManager):
+    def evaluate(self, state: GameState, data_manager: DataManager, reward_manager: RewardManager):
         self.model.eval()
-        eval_data_loader = data_manager.eval_data()
+        eval_data = data_manager.get_eval_data()
+        batch = eval_data #next(iter(eval_data_loader))
 
-        batch = next(iter(eval_data_loader))
-
-        completions, completion_ids = self.model.generate(batch['prompts'])
-
-        reward_fn = reward_manager.dispatch_reward_fn(reward_manager.round, reward_manager.stage)
-        rewards = reward_fn.evaluation(batch['prompts'], completions)
-        advantages = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
+        completions, completion_ids = self.generate(batch, return_completion_ids=True)
+        
+        #TODO: Come back and add evaluation fxn to the reward manager
+        reward_fn = reward_manager.dispatch_reward_fn(state.round, state.stage)
+        rewards = reward_fn.evaluation(batch['prompt'], completions)
+        advantages = (rewards - rewards.mean(dim=1, keepdim=True)) / (rewards.std(dim=1, keepdim=True) + 1e-8)
+        
         batch['completion_ids'] = completion_ids
         batch['completion_mask'] = completion_ids != self.tokenizer.eos_token_id
         batch['advantages'] = advantages
         batch['old_per_token_logps'] = None
 
-        loss, metrics = self.compute_loss(batch, mode='eval')
+        loss, metrics = self.compute_loss(batch, mode='eval', return_metrics=True)
         self.log(metrics, reward_manager.global_step)
     
     def save(self, save_dir: str) -> None:

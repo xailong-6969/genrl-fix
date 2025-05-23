@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source ~/.profile
+# source ~/.profile
 ROOT=$PWD
 
 torchrun \

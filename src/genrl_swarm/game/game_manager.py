@@ -5,6 +5,7 @@ from datetime import datetime
 
 from typing import Any, List, Tuple, Dict, Callable
 
+from genrl_swarm.runner.global_defs import get_logger
 from genrl_swarm.state import GameState, GameNode
 from genrl_swarm.rewards import RewardManager
 from genrl_swarm.trainer import TrainerModule
@@ -57,6 +58,7 @@ class GameManager(abc.ABC): #TODO: Make this use enum
         Return True if conditions imply game should end and no new round/stage should begin, else False
         """
         pass
+
     
     #Helper methods
     def aggregate_game_state_methods(self) -> Tuple[Dict[str, Callable], Dict[str, Callable]]:
@@ -76,21 +78,19 @@ class GameManager(abc.ABC): #TODO: Make this use enum
         outputs = self.trainer.generate(inputs) # Generates a rollout. Ingests inputs indexable in the following way [Agent][Batch Item][Nodes idx within current stage][World state] then outputs something indexable as [Agent][Batch Item][Nodes idx within current stage]
         actions = self.data_manager.prepare_actions(outputs, index_mapping) # Maps model outputs to RL game tree actions
         self.state.append_actions(actions) # Adds the freshly generated rollout to the game state associated with this agent's nodes at this stage
-        return (inputs, outputs, index_mapping)
 
     def run_game_round(self):
         # Loop through stages until end of round is hit
-        model_state_snapshots = {}
         while not self.end_of_round():
-            model_state_snapshots[self.state.stage] = self.run_game_stage() # Generates rollout and updates the game state #TODO(Discuss): Ugly, but gets the job done?
-            swarm_states = self.communication.all_gather_object(self.state.get_latest_actions()[self.rank]) #TODO(jari): Leaving as a placeholder for now. # NOTE: Assuming returns something with indices [Agent][Batch][Node][States]
+            self.run_game_stage() # Generates rollout and updates the game state #TODO(Discuss): Ugly, but gets the job done?
+            swarm_states = self.communication.all_gather_object(self.state.get_latest_actions()[0]) #TODO(jari): Leaving as a placeholder for now. # NOTE: Assuming returns something with indices [Agent][Batch][Node][States]
             world_states = self.data_manager.prepare_states(self.state, swarm_states) #Maps states received via communication with the swarm to RL game tree world states
             self.state.advance_stage(world_states) # Prepare for next stage
         self.rewards.update_rewards(self.state) # Compute reward functions now that we have all the data needed for this round
         if self.mode in ['train', 'train_and_evaluate']:
-            self.trainer.train(self.state, self.rewards) #TODO(Discuss): Current implementation will treat all "local" agents the same and do a single training pass on one of them using data from all of them. Same with generation since trainer is single model-centric
+            self.trainer.train(self.state, self.data_manager, self.rewards) #TODO(Discuss): Current implementation will treat all "local" agents the same and do a single training pass on one of them using data from all of them. Same with generation since trainer is single model-centric
         if self.mode in ['evaluate', 'train_and_evaluate']:
-            self.trainer.evaluate(self.data_manager, self.rewards)
+            self.trainer.evaluate(self.state, self.data_manager, self.rewards)
         self.state.advance_round(self.data_manager.get_round_data()) # Resets the game state appropriately, stages the next round, and increments round/stage counters appropriatelly
         self.rewards.reset()
 
@@ -98,10 +98,13 @@ class GameManager(abc.ABC): #TODO: Make this use enum
         # Initialize game and/or run specific details of game state
         world_state_pruners, game_tree_brancher = self.aggregate_game_state_methods()
         self.state._init_game(self.data_manager.get_round_data(), world_state_pruners=world_state_pruners, game_tree_brancher=game_tree_brancher) # Prepare game trees within the game state for the initial round's batch of data
-        
+        round = 1
         # Loop through rounds until end of the game is hit
         while not self.end_of_game():
+            get_logger().info(f"Starting round: {round}/{getattr(self, 'max_round', None)}.")
             self.run_game_round() # Loops through stages until end of round signal is received
+            round += 1
+        
 
 
 class DefaultGameManagerMixin: #TODO: Add basic functionality to these methods!
@@ -145,8 +148,9 @@ class DefaultGameManagerMixin: #TODO: Add basic functionality to these methods!
         Return:
             List[List[GameNode]]: List of lists of game nodes, where outer-most list contains a list for each node in the input (i.e., stage_nodes) and each inner-list contains children nodes.  
         """
-        return [[] for _ in stage_nodes]
-
+        #TODO(discuss): Need to explain this better... How do we make it more intuitive?
+        pass
+  
 
 class BaseGameManager(GameManager):
     """

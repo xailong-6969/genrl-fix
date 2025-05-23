@@ -47,7 +47,7 @@ def _main(cfg: DictConfig):
         torch.distributed.barrier()
         format_msg = f"[{rank}] %(asctime)s %(levelname)s: %(message)s"
         logging.basicConfig(
-            level=logging.INFO, 
+            level=logging.DEBUG, 
             format=format_msg
         )
         formatter = logging.Formatter(format_msg)
@@ -80,4 +80,5 @@ def main(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
+    os.environ["HYDRA_FULL_ERROR"] = "1"
     main()

@@ -1,0 +1,101 @@
+import re
+from typing import List, Dict, Any
+
+from genrl_swarm.state import GameState
+
+#General purpose reward fucntions
+def format_reward(completions: List[str], pattern: str = r"\nAnswer: \d+", weight: float = 0.5, **kwargs) -> List[int]:
+    matches = [re.search(pattern, content) for content in completions]
+    return [weight if match else 0.0 for match in matches]
+
+def correctness_reward(completions: List[str], correct: str, pattern: str = r'Answer: .*?([\d,]+(?:\.\d+)?)', weight: float = 1.0, **kwargs):
+    rewards = []
+    for completion, ground_truth in zip(completions, correct):
+        try:
+            match = re.search(pattern, completion) 
+            if match:
+                answer = match.group(1)
+                for remove_char in [',', '$', '%', 'g']:
+                    answer = answer.replace(remove_char, '')
+                if abs(float(answer)-float(ground_truth)) < 1e-3:
+                    rewards.append(weight)
+                else:
+                    rewards.append(0.0)
+            else:
+                rewards.append(0.0)
+        except ValueError:
+            rewards.append(0.0)
+    return rewards
+
+def validity_reward(completions: List[str], valid: List[str], pattern: str = r'Choice:.*?Student #([\d]+(?:\.\d+)?)', weight: float = 0.5, **kwargs):
+    rewards = []
+    for completion in completions:
+        try:
+            match = re.search(pattern, completion) 
+            if match:
+                answer = match.group(1)
+                if answer in valid:
+                    rewards.append(weight)
+                else:
+                    rewards.append(0.0)
+            else:
+                rewards.append(0.0)
+        except ValueError:
+            rewards.append(0.0)
+    return rewards
+
+#Helper functions
+def extract_responses(completion: str, pattern: str = r'Choice:.*?Student #([\d]+(?:\.\d+)?)'):
+    match = re.search(pattern, completion) 
+    if match:
+        response = match.group(1)
+        return response
+    return "None"
+
+#Game state parsers
+def get_completions(game_state: GameState, stage: int) -> Dict[Any, List[List[str]]]:
+    #Get completions per agent and batch item from corresponding set of actions 
+    actions = game_state.get_stage_actions(stage)
+    completions = {} #Key per agent
+    for agent in actions:
+        completions[agent] = [] #Will store a list per batch item
+        for batch_idx, _ in enumerate(actions[agent]):
+            batch_completions = [] #Will store all completion strings for this batch item for this agent
+            for node, _ in enumerate(actions[agent][batch_idx]):
+                batch_completions.append(actions[agent][batch_idx][node])
+            completions[agent].append(batch_completions)
+    return completions #Indices are [Agent][Batch Item][Node Idx][Completion]
+
+def get_answers(game_state: GameState, stage: int) -> Dict[Any, List[str]]:
+    #Get answers per agent and batch item from corresponding set of world-states 
+    world_states = game_state.get_stage_state(stage)
+    answers = {} #Key per agent
+    for agent in world_states:
+        answers[agent] = [] #Will store an answer (or list of valid choices) per batch item
+        for batch_idx, _ in enumerate(world_states[agent]):
+            batch_answers = []
+            for node, _ in enumerate(world_states[agent][batch_idx]):
+                batch_answers.append(world_states[agent][batch_idx][node][0]['answer'])
+            answers[agent].append(batch_answers) #Pull the answer for this batch item from the environment state
+    return answers #Indices are [Agent][Batch Item][Node Idx]
+
+def get_responses(game_state: GameState, stage: int) -> Dict[Any, List[str]]:
+    #Get responses being included as input to the current stage from the corresponding set of world-states
+    world_states = game_state.get_stage_state(stage)
+    responses = {} #Key per agent
+    for agent in world_states:
+        responses[agent] = [] #Will store an answer (or list of valid choices) per batch item
+        for batch_idx, _ in enumerate(world_states[agent]):
+            batch_responses = []
+            for node_idx, _ in enumerate(world_states[agent][batch_idx]):
+                batch_responses.append(world_states[agent][batch_idx][node_idx][1])
+            responses[agent].append(batch_responses)
+    return responses #Indices are [Agent][Batch Item][Node Idx]
+
+def parse_game_state(game_state, stage):
+    if stage == 0:
+        return get_completions(game_state, stage), get_answers(game_state, stage)
+    elif stage == 1:
+        return get_completions(game_state, stage), get_responses(game_state, stage)
+    elif stage == 2:
+        return get_completions(game_state, stage), get_answers(game_state, stage)
