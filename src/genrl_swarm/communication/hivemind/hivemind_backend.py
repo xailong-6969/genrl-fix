@@ -102,3 +102,6 @@ class HivemindBackend(Communication):
         )
         _, output = zip(*tmp)
         return output
+
+    def get_id(self):
+        return self.dht.peer_id

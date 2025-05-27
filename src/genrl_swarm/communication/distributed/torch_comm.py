@@ -27,3 +27,6 @@ class TorchBackend(Communication):
             group=group,
         )
         return out
+
+    def get_id(self):
+        return dist.get_rank()
