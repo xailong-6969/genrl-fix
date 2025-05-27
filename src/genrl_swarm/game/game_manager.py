@@ -83,7 +83,7 @@ class GameManager(abc.ABC): #TODO: Make this use enum
         # Loop through stages until end of round is hit
         while not self.end_of_round():
             self.run_game_stage() # Generates rollout and updates the game state #TODO(Discuss): Ugly, but gets the job done?
-            swarm_states = self.communication.all_gather_object(self.state.get_latest_actions()[self.rank]) #TODO(jari): Leaving as a placeholder for now. # NOTE: Assuming returns something with indices [Agent][Batch][Node][States]
+            swarm_states = self.communication.all_gather_object(self.state.get_latest_actions()[self.rank])
             world_states = self.data_manager.prepare_states(self.state, swarm_states) #Maps states received via communication with the swarm to RL game tree world states
             self.state.advance_stage(world_states) # Prepare for next stage
         self.rewards.update_rewards(self.state) # Compute reward functions now that we have all the data needed for this round

@@ -1,17 +1,17 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: genrl-gsm8k-torch # Everywhere that says "example" here ought to match.
+  name: genrl-gsm8k-hivemind # Everywhere that says "example" here ought to match.
   namespace: research
 spec:
   clusterIP: None
   selector:
-    job-name: genrl-gsm8k-torch # Everywhere that says "example" here ought to match.
+    job-name: genrl-gsm8k-hivemind # Everywhere that says "example" here ought to match.
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: genrl-gsm8k-torch # Everywhere that says "example" here ought to match.
+  name: genrl-gsm8k-hivemind # Everywhere that says "example" here ought to match.
   namespace: research
   annotations:
     kueue.x-k8s.io/queue-name: research-queue
@@ -42,7 +42,7 @@ spec:
         - name: gcp-repo-creds
 
       restartPolicy: Never
-      subdomain: genrl-gsm8k-torch # Everywhere that says "example" here ought to match.
+      subdomain: genrl-gsm8k-hivemind # Everywhere that says "example" here ought to match.
 
       volumes:
       - emptyDir:
@@ -64,15 +64,18 @@ spec:
           command:
             - bash
             - -c
-            - 'cp -r /home/gensyn/shared/source/genrl-swarm ~/ && cd ~/genrl-swarm && pip install .[examples] && . scripts/train.sh 2 8 gsm8k gsm8k.yaml'
+            - 'cp -r /home/gensyn/shared/source/genrl-swarm ~/ && cd ~/genrl-swarm && pip install .[examples] && . scripts/train_hivemind.sh gsm8k gsm8k.yaml'
 
           env:
           - name: MASTER_ADDR
             # Every node will be discoverable at <job_name>-<index>.<subdomain>.research.svc.cluster.local
-            value: genrl-gsm8k-torch-0.genrl-gsm8k-torch.research.svc.cluster.local 
+            value: genrl-gsm8k-hivemind-0.genrl-gsm8k-hivemind.research.svc.cluster.local 
 
           - name: MASTER_PORT
             value: '29500'
+
+          - name: WORLD_SIZE
+            value: '2'
 
           # Feel free to add more ports below.
           ports:
@@ -82,11 +85,11 @@ spec:
           # These are per-pod
           resources:
             requests:
-              memory: 600G
-              cpu: 100
+              memory: 75G
+              cpu: 12
             limits:
-              nvidia.com/gpu: '8'
-              memory: 600G
+              nvidia.com/gpu: '1'
+              memory: 75G
 
           volumeMounts:
             - mountPath: /dev/shm

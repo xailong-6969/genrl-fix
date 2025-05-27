@@ -17,10 +17,13 @@ class HivemindRendezvouz:
     def init(cls, is_master: bool = False):
         if cls._STORE is None:
             cls._IS_MASTER = is_master
+            world_size = int(os.environ.get("WORLD_SIZE", 1))
             cls._STORE = dist.TCPStore(
                 host_name=os.environ["MASTER_ADDR"],
                 port=int(os.environ["MASTER_PORT"]),
                 is_master=is_master,
+                world_size=world_size,
+                wait_for_workers=True,
             )
 
     @classmethod
@@ -29,6 +32,7 @@ class HivemindRendezvouz:
 
     @classmethod
     def set_initial_peers(cls, initial_peers):
+        pass
         if cls._STORE is None:
             cls.init()
         cls._STORE.set("initial_peers", pickle.dumps(initial_peers))
@@ -37,8 +41,10 @@ class HivemindRendezvouz:
     def get_initial_peers(cls):
         if cls._STORE is None:
             cls.init()
+        cls._STORE.wait(["initial_peers"])
         peer_bytes = cls._STORE.get("initial_peers")
-        return pickle.loads(peer_bytes)
+        initial_peers = pickle.loads(peer_bytes)
+        return initial_peers
 
 
 class HivemindBackend(Communication):
@@ -47,32 +53,35 @@ class HivemindBackend(Communication):
         initial_peers: List[str] | None = None,
         timeout: int = 600,
     ):
-        self.world_size = int(os.environ["WORLD_SIZE"])
+        self.world_size = int(os.environ.get("WORLD_SIZE", 1))
         self.timeout = timeout
-        self.initial_peers = initial_peers
         bootstrap = HivemindRendezvouz.is_bootstrap()
+        self.dht = None
         if bootstrap:
             self.dht = DHT(
                 start=True,
                 host_maddrs=[f"/ip4/0.0.0.0/tcp/0", "/ip4/0.0.0.0/udp/0/quic"],
+                initial_peers=initial_peers,
             )
-            HivemindRendezvouz.set_initial_peers(self.dht.get_visible_maddrs())
+            dht_maddrs = self.dht.get_visible_maddrs()
+            HivemindRendezvouz.set_initial_peers(dht_maddrs)
         else:
+            initial_peers = initial_peers or HivemindRendezvouz.get_initial_peers()
             self.dht = DHT(
                 start=True,
                 host_maddrs=[f"/ip4/0.0.0.0/tcp/0", "/ip4/0.0.0.0/udp/0/quic"],
-                initial_peers=self.initial_peers
-                or HivemindRendezvouz.get_initial_peers(),
+                initial_peers=initial_peers,
             )
         self.step_ = 0
 
     def all_gather_object(self, obj: Any) -> Sequence[Any]:
         # TODO(jkolehm): change pickle to something more secure before launching the code.
         key = str(self.step_)
+        pickle_bytes = pickle.dumps(obj)
         self.dht.store(
             key,
             subkey=str(self.dht.peer_id),
-            value=pickle.dumps(obj),
+            value=pickle_bytes,
             expiration_time=get_dht_time() + self.timeout,
         )
         t_ = time.monotonic()
