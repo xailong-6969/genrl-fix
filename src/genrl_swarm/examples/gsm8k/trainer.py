@@ -17,7 +17,7 @@ from genrl_swarm.trainer import TrainerModule
 from genrl_swarm.rewards import RewardManager
 from genrl_swarm.data import DataManager
 from genrl_swarm.state import GameState
-from genrl_swarm.logging_utils.tensorboard_logger import TensorboardLoggerMixin
+from genrl_swarm.logging_utils.ml_logger import LoggerMixin
 from trl.trainer.utils import selective_log_softmax
 from trl.trainer.grpo_config import GRPOConfig
 from trl.models import create_reference_model
@@ -26,7 +26,7 @@ from trl.data_utils import apply_chat_template
 if is_accelerate_available():
     from accelerate.utils import DistributedType
 
-class GRPOTrainerModule(TrainerModule, TensorboardLoggerMixin):
+class GRPOTrainerModule(TrainerModule, LoggerMixin):
     """
     Trainer for the Group Relative Policy Optimization (GRPO) method.
     Implements the TrainerModule interface defined in base_trainer.py.
@@ -65,7 +65,7 @@ class GRPOTrainerModule(TrainerModule, TensorboardLoggerMixin):
         self._initialize_metrics()
         self._initialize_generation_config()
         self._initialize_trainer()
-        self.init_tracker(self.save_dir)
+        self.init_tracker(self.save_dir, log_with=kwargs.get("log_with", None))
 
     
     def _initialize_model(self):
@@ -328,7 +328,7 @@ class GRPOTrainerModule(TrainerModule, TensorboardLoggerMixin):
 
         with torch.no_grad():
             advantages = (rewards - rewards.mean(dim=1, keepdim=True)) 
-            if rewards.shape[0] > 1:
+            if rewards.shape[1] > 1:
                 advantages /= (rewards.std(dim=1, keepdim=True) + 1e-8)
 
         model_inputs["advantages"] = advantages.squeeze(dim=-1)
@@ -377,7 +377,8 @@ class GRPOTrainerModule(TrainerModule, TensorboardLoggerMixin):
                     self.trainer.lr_scheduler.step()
 
             self.model.zero_grad()
-        metrics = {'train/loss': loss.item()} 
+        metrics = {'train/loss': loss.cpu().mean().item()} 
+        metrics.update({'train/rewards': rewards.cpu().mean().item()})
         self.log(metrics, global_step)
 
         return global_step
@@ -401,7 +402,7 @@ class GRPOTrainerModule(TrainerModule, TensorboardLoggerMixin):
         batch['old_per_token_logps'] = None
 
         loss, metrics = self.compute_loss(batch, mode='eval', return_metrics=True)
-        self.log(metrics, reward_manager.global_step)
+        self.log(metrics, game_state.round)
     
     def save(self, save_dir: str) -> None:
         """
@@ -444,3 +445,6 @@ class GRPOTrainerModule(TrainerModule, TensorboardLoggerMixin):
         trainer.generation_config = trainer_state["generation_config"]
         
         return trainer
+
+    def cleanup(self):
+        self.cleanup_trackers()

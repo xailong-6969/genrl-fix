@@ -7,7 +7,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from genrl_swarm.communication.hivemind.hivemind_backend import \
     HivemindRendezvouz
-from genrl_swarm.runner.global_defs import get_logger
+from genrl_swarm.logging_utils.global_defs import get_logger
 
 
 @hydra.main(version_base=None)

@@ -35,6 +35,8 @@ class TrainerModule(abc.ABC):
     def load(cls, load_dir: str) -> 'TrainerModule':
         pass
     
+    def cleanup(self):
+        pass
 
     #NOTE: Probably scrap this, but tossing in here since we probably want to provide some utility functions for mapping from tree indexing as well as from (mentioned in comment above)
     # def _map_to_tree_indexing(self, actions: Any, stage_mapping: dict) -> dict:

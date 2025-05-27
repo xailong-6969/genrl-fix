@@ -18,9 +18,9 @@ dependencies = [
     "numpy",
     "hydra-core",
     "datasets",
-    "transformers",
+    "transformers==4.51.3",
     "tensorboard",
-    "trl",
+    "wandb",
     "hivemind @ git+https://github.com/learning-at-home/hivemind@1.11.11",
 ]
 

@@ -30,8 +30,9 @@ game_manager:
     _target_: genrl_swarm.examples.gsm8k.trainer.GRPOTrainerModule
     models:
       - _target_: transformers.AutoModelForCausalLM.from_pretrained
-        pretrained_model_name_or_path: /home/gensyn/shared/models/qwen-2.5-0.5B-Instruct
+        pretrained_model_name_or_path: gensyn/qwen-2.5-0.5B-Instruct
         config: trl.trainer.GRPOConfig
+        log_with: tensorboard
   data_manager:
     _target_: genrl_swarm.examples.gsm8k.data.GSM8KDataManager
     # num_students_to_sample, num_critics_to_sample, subsampling_method, prompt_generator_role use defaults

@@ -5,7 +5,7 @@ from datetime import datetime
 
 from typing import Any, List, Tuple, Dict, Callable
 
-from genrl_swarm.runner.global_defs import get_logger
+from genrl_swarm.logging_utils.global_defs import get_logger
 from genrl_swarm.state import GameState, GameNode
 from genrl_swarm.rewards import RewardManager
 from genrl_swarm.trainer import TrainerModule
@@ -83,7 +83,7 @@ class GameManager(abc.ABC): #TODO: Make this use enum
         # Loop through stages until end of round is hit
         while not self.end_of_round():
             self.run_game_stage() # Generates rollout and updates the game state #TODO(Discuss): Ugly, but gets the job done?
-            swarm_states = self.communication.all_gather_object(self.state.get_latest_actions()[0]) #TODO(jari): Leaving as a placeholder for now. # NOTE: Assuming returns something with indices [Agent][Batch][Node][States]
+            swarm_states = self.communication.all_gather_object(self.state.get_latest_actions()[self.rank]) #TODO(jari): Leaving as a placeholder for now. # NOTE: Assuming returns something with indices [Agent][Batch][Node][States]
             world_states = self.data_manager.prepare_states(self.state, swarm_states) #Maps states received via communication with the swarm to RL game tree world states
             self.state.advance_stage(world_states) # Prepare for next stage
         self.rewards.update_rewards(self.state) # Compute reward functions now that we have all the data needed for this round
@@ -98,13 +98,15 @@ class GameManager(abc.ABC): #TODO: Make this use enum
         # Initialize game and/or run specific details of game state
         world_state_pruners, game_tree_brancher = self.aggregate_game_state_methods()
         self.state._init_game(self.data_manager.get_round_data(), world_state_pruners=world_state_pruners, game_tree_brancher=game_tree_brancher) # Prepare game trees within the game state for the initial round's batch of data
-        round = 1
         # Loop through rounds until end of the game is hit
         while not self.end_of_game():
-            get_logger().info(f"Starting round: {round}/{getattr(self, 'max_round', None)}.")
-            self.run_game_round() # Loops through stages until end of round signal is received
-            round += 1
-        
+            try:
+                get_logger().info(f"Starting round: {self.state.round}/{getattr(self, 'max_round', None)}.")
+                self.run_game_round() # Loops through stages until end of round signal is received
+            except:
+                self.trainer.cleanup()
+                get_logger().exception("Exception occurred during game run.", stack_info=True)
+                raise        
 
 
 class DefaultGameManagerMixin: #TODO: Add basic functionality to these methods!

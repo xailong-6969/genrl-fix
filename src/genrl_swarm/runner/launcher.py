@@ -9,7 +9,7 @@ import torch.distributed
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from torch.distributed.elastic.multiprocessing.errors import record
-from genrl_swarm.runner.global_defs import get_logger
+from genrl_swarm.logging_utils.global_defs import get_logger
 
 
 @dataclass

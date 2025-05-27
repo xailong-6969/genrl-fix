@@ -12,7 +12,7 @@ from trl import DDPOConfig, DefaultDDPOStableDiffusionPipeline
 from genrl_swarm.rewards import RewardManager
 from genrl_swarm.data.data_manager import DataManager
 from genrl_swarm.state import GameState
-from genrl_swarm.logging_utils.tensorboard_logger import ImageLoggerMixin
+from genrl_swarm.logging_utils.ml_logger import ImageLoggerMixin
 from genrl_swarm.trainer.base_trainer import TrainerModule
 
 # Set up basic logging to replace accelerate.logging
@@ -113,10 +113,10 @@ class DDPOTrainer(TrainerModule, ImageLoggerMixin):
         # Set up tracking/logging
         self.is_main_process = True  # In single-device setting, this is always True
         
-        if self.config.log_with == "tensorboard":
+        if self.config.log_with:
             log_dir = os.path.join(self.output_dir, "logs", f"rank_{self.rank}")
             os.makedirs(log_dir, exist_ok=True)
-            self.init_tracker(log_dir)
+            self.init_tracker(log_dir, self.config.log_with)
         
         # Adjust output directory to include rank
         if self.output_dir:
@@ -637,7 +637,7 @@ class DDPOTrainer(TrainerModule, ImageLoggerMixin):
             )
         return True, ""
 
-    def train(self, game_state: GameState, reward_manager: RewardManager):
+    def train(self, game_state: GameState, data_manager: DataManager, reward_manager: RewardManager):
         """
         Train the model for a given number of epochs
         """
@@ -671,7 +671,7 @@ class DDPOTrainer(TrainerModule, ImageLoggerMixin):
 
     
     @torch.no_grad()
-    def evaluate(self, data_manager: DataManager, reward_manager: RewardManager):
+    def evaluate(self, game_state: GameState, data_manager: DataManager, reward_manager: RewardManager):
         seed = 42
         generator = torch.Generator(device='cuda')
         generator = generator.manual_seed(seed)
@@ -684,13 +684,13 @@ class DDPOTrainer(TrainerModule, ImageLoggerMixin):
         rewards, scalers_dict = reward_fn.evaluation(prompts, images)
         rewards = rewards * scalers_dict["std"] + scalers_dict["mean"]
 
-        # Log eval images using ImageLoggerMixin
-        if self.config.log_with == "tensorboard" and hasattr(self, 'tracker') and self.tracker:
-            self.log_images(images, prompts, reward_manager.round)
-            
+        self.log_images(images, prompts, reward_manager.round)
         # Log evaluation metrics
         reward_mean = rewards.mean().item()
         self.logger.info(f"Evaluation at round {reward_manager.round}: mean reward = {reward_mean:.4f}")
         self.log({"eval/reward": reward_mean}, reward_manager.round)
         
         return {'prompts': prompts, 'images': images, 'rewards': rewards}
+
+    def cleanup(self):
+        self.cleanup_trackers()
