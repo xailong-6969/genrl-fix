@@ -1,4 +1,4 @@
-log_dir: /home/gensyn/shared/jari/genrl/gsm8k
+log_dir: /workdir/gsm8k
 
 training:
   max_round: 1
@@ -30,12 +30,12 @@ game_manager:
     _target_: genrl_swarm.examples.gsm8k.trainer.GRPOTrainerModule
     models:
       - _target_: transformers.AutoModelForCausalLM.from_pretrained
-        pretrained_model_name_or_path: gensyn/qwen-2.5-0.5B-Instruct
+        pretrained_model_name_or_path: Gensyn/Qwen2.5-0.5B-Instruct
         config: trl.trainer.GRPOConfig
-        log_with: tensorboard
+    log_with: tensorboard
   data_manager:
     _target_: genrl_swarm.examples.gsm8k.data.GSM8KDataManager
     # num_students_to_sample, num_critics_to_sample, subsampling_method, prompt_generator_role use defaults
   communication:
     _target_: genrl_swarm.communication.distributed.torch_comm.TorchBackend
-  run_mode: "Train"
+  run_mode: "train"
