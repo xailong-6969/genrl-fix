@@ -1,4 +1,4 @@
-from typing import Any, Sequence
+from typing import Any, Dict, Sequence
 
 import torch.distributed as dist
 
@@ -15,7 +15,7 @@ class TorchBackend(Communication):
         else:
             self._mesh = None
 
-    def all_gather_object(self, obj: Any, *args, **kwargs) -> Sequence[Any]:
+    def all_gather_object(self, obj: Any, *args, **kwargs) -> Dict[str | int, Any]:
         if "name" in kwargs:
             group = self._mesh.get_group(mesh_dim=kwargs.get("name"))
         else:
@@ -26,7 +26,7 @@ class TorchBackend(Communication):
             obj,
             group=group,
         )
-        return out
+        return {index: value for index, value in enumerate(out)}
 
     def get_id(self):
         return dist.get_rank()

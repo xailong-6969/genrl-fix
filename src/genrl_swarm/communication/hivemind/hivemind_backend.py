@@ -1,7 +1,7 @@
 import os
 import pickle
 import time
-from typing import Any, List, Sequence
+from typing import Any, Dict, List, Sequence
 
 import torch.distributed as dist
 from hivemind import DHT, get_dht_time
@@ -74,7 +74,7 @@ class HivemindBackend(Communication):
             )
         self.step_ = 0
 
-    def all_gather_object(self, obj: Any) -> Sequence[Any]:
+    def all_gather_object(self, obj: Any) -> Dict[str| int, Any]:
         # TODO(jkolehm): change pickle to something more secure before launching the code.
         key = str(self.step_)
         pickle_bytes = pickle.dumps(obj)
@@ -100,8 +100,7 @@ class HivemindBackend(Communication):
             [(key, pickle.loads(value.value)) for key, value in output_.items()],
             key=lambda x: x[0],
         )
-        _, output = zip(*tmp)
-        return output
+        return {key: value for key, value in tmp}
 
     def get_id(self):
-        return self.dht.peer_id
+        return str(self.dht.peer_id)

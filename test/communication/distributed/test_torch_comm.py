@@ -17,7 +17,7 @@ def _test_communication(rank, init_method, world_size):
     obj = [dist.get_rank()]
     gathered_obj = backend.all_gather_object(obj)
     assert len(gathered_obj) == dist.get_world_size()
-    assert gathered_obj == [[i] for i in range(dist.get_world_size())]
+    assert gathered_obj == {i: [i] for i in range(dist.get_world_size())}
     torch.distributed.destroy_process_group()
 
 

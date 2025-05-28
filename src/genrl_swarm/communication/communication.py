@@ -1,10 +1,10 @@
 import abc
-from typing import Any, Sequence
+from typing import Any, Dict
 
 
 class Communication(abc.ABC):
     @abc.abstractmethod
-    def all_gather_object(self, obj: Any, *args, **kwargs) -> Sequence[Any]:
+    def all_gather_object(self, obj: Any, *args, **kwargs) -> Dict[str | int, Any]:
         pass
 
     @abc.abstractmethod

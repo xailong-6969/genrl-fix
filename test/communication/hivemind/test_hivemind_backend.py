@@ -13,9 +13,8 @@ def _test_hivemind_backend(rank, world_size):
     backend = HivemindBackend(timeout=5)
     obj = [rank]
     gathered_obj = backend.all_gather_object(obj)
-    assert len(gathered_obj) == world_size
-    gathered_obj = list(sorted(gathered_obj, key=lambda x: x[0]))
-    assert gathered_obj == [[i] for i in range(world_size)]
+    assert list(gathered_obj.values()) == [[i] for i in range(world_size)]
+    assert gathered_obj[backend.get_id()] == [rank]
 
 
 @pytest.mark.parametrize("world_size", [1, 2])
