@@ -55,7 +55,7 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         
         # Additional parameters
         self.callbacks = kwargs.get("callbacks", [])
-        self.save_dir = kwargs.get("save_dir", "./output")
+        self.save_dir = kwargs.get("log_dir", "./outputs")
         self.global_step = 0
         self.num_generations = kwargs.get("num_generations", 1)
 

@@ -1,8 +1,5 @@
 import abc
-import os
-import pickle
-from datetime import datetime
-
+from enum import Enum
 from typing import Any, List, Tuple, Dict, Callable
 
 from genrl_swarm.logging_utils.global_defs import get_logger
@@ -13,6 +10,14 @@ from genrl_swarm.data import DataManager
 from genrl_swarm.communication.communication import Communication
 from genrl_swarm.roles import RoleManager #TODO: Implement RoleManager+Pass to game manager
 from genrl_swarm.communication import Communication
+from genrl_swarm.blockchain import SwarmCoordinator
+
+
+class RunType(Enum):
+    Train = "train"
+    Evaluate = "evaluate"
+    TrainAndEvaluate = "train_and_evaluate"
+
 
 class GameManager(abc.ABC): #TODO: Make this use enum
     def __init__(self, 
@@ -22,7 +27,7 @@ class GameManager(abc.ABC): #TODO: Make this use enum
                  data_manager: DataManager, 
                  communication: Communication,
                  role_manager: RoleManager | None = None,
-                 run_mode: str = "Train",
+                 run_mode: str = "train",
                  rank: int = 0,
                  ):
         """Initialization method that stores the various managers needed to orchestrate this game"""
@@ -32,9 +37,12 @@ class GameManager(abc.ABC): #TODO: Make this use enum
         self.data_manager = data_manager
         self.communication = communication
         self.roles = role_manager
-        self.mode = run_mode.lower()
-        self._rank = rank or self.communication.get_id()
-        self.agent_ids = [self._rank] #NOTE: Add more if wanted for game/usecase
+        try:
+            self.mode = RunType(run_mode)
+        except ValueError:
+            get_logger().info(f"Invalid run mode: {run_mode}. Defaulting to train only.")
+            self.mode = RunType.Train
+        self._rank = rank
 
     @property
     def rank(self) -> int:
@@ -60,6 +68,13 @@ class GameManager(abc.ABC): #TODO: Make this use enum
         """
         pass
 
+    def _hook_after_rewards_updated(self):
+        """Hook method called after rewards are updated."""
+        pass
+
+    def _hook_after_round_advanced(self):
+        """Hook method called after the round is advanced and rewards are reset."""
+        pass
     
     #Helper methods
     def aggregate_game_state_methods(self) -> Tuple[Dict[str, Callable], Dict[str, Callable]]:
@@ -87,13 +102,18 @@ class GameManager(abc.ABC): #TODO: Make this use enum
             swarm_states = self.communication.all_gather_object(self.state.get_latest_actions()[self.rank])
             world_states = self.data_manager.prepare_states(self.state, swarm_states) #Maps states received via communication with the swarm to RL game tree world states
             self.state.advance_stage(world_states) # Prepare for next stage
+    
         self.rewards.update_rewards(self.state) # Compute reward functions now that we have all the data needed for this round
-        if self.mode in ['train', 'train_and_evaluate']:
+        self._hook_after_rewards_updated() # Call hook
+
+        if self.mode in [RunType.Train, RunType.TrainAndEvaluate]:
             self.trainer.train(self.state, self.data_manager, self.rewards) #TODO(Discuss): Current implementation will treat all "local" agents the same and do a single training pass on one of them using data from all of them. Same with generation since trainer is single model-centric
-        if self.mode in ['evaluate', 'train_and_evaluate']:
+        if self.mode in [RunType.Evaluate, RunType.TrainAndEvaluate]:
             self.trainer.evaluate(self.state, self.data_manager, self.rewards)
-        self.state.advance_round(self.data_manager.get_round_data(), agent_keys=self.agent_ids) # Resets the game state appropriately, stages the next round, and increments round/stage counters appropriatelly
+    
+        self.state.advance_round(self.data_manager.get_round_data()) # Resets the game state appropriately, stages the next round, and increments round/stage counters appropriatelly
         self.rewards.reset()
+        self._hook_after_round_advanced() # Call hook
 
     def run_game(self):
         # Initialize game and/or run specific details of game state
@@ -218,3 +238,63 @@ class BaseGameManager(DefaultGameManagerMixin, GameManager):
             return False
         else:
             return True
+
+
+class SwarmGameManager(BaseGameManager):
+    """GameManager that orchestrates a game using a SwarmCoordinator."""
+    def __init__(self, 
+                 coordinator: SwarmCoordinator, 
+                 max_stage: int,
+                 max_round: int,
+                 prune_K: int,
+                 game_state: GameState, 
+                 reward_manager: RewardManager, 
+                 trainer: TrainerModule, 
+                 data_manager: DataManager, 
+                 communication: Communication,
+                 role_manager: RoleManager | None = None,
+                 run_mode: str = "Train"
+                 ):
+        super().__init__(
+            max_stage=max_stage,
+            max_round=max_round,
+            prune_K=prune_K,
+            game_state=game_state,
+            reward_manager=reward_manager,
+            trainer=trainer,
+            data_manager=data_manager,
+            communication=communication,
+            role_manager=role_manager,
+            run_mode=run_mode
+        )
+        self.coordinator = coordinator
+        round, stage = self.coordinator.get_round_and_stage()
+        self.state.round = round
+        self.state.stage = stage
+        get_logger().info(f"Starting round: {self.state.round}/{self.max_round}. Starting stage: {self.state.stage}/{self.max_stage}.")
+
+    def _get_total_rewards(self):
+        rewards = self.rewards.rewards
+        if isinstance(rewards, list):
+            if isinstance(rewards[0], list):
+                flattened = [item for sublist in rewards for item in sublist]
+                total_rewards = int(sum(flattened))
+            else:
+                print(rewards)
+                total_rewards = int(sum(rewards))
+        else:
+            total_rewards = rewards
+        return total_rewards
+
+    def _hook_after_rewards_updated(self):
+        # TODO: get rewards and submit
+        # total_rewards = self._get_total_rewards()
+        # self.coordinator.submit_reward(self.state.round, self.state.stage, int(total_rewards), self.communication.get_peer_id())
+        pass
+    
+    def _hook_after_round_advanced(self):
+        # TODO: get winners and submit
+        # total_rewards = self._get_total_rewards()
+        # winners = 'agent with max rewards I guess' # need to attribute rewards to peer_ids
+        # self.coordinator.submit_winners(self.state.round, winners, self.communication.dht.peer_id)
+        pass

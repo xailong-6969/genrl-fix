@@ -1,8 +1,7 @@
 import abc
 from typing import Any, Callable, Union, Iterable, Dict, List
 from genrl_swarm.rewards.reward_store import RewardFnStore
-# from genrl_swarm.game_state import GameState todo: add game state
-GameState = Any
+from genrl_swarm.state import GameState
 
 
 class RewardManager(abc.ABC):

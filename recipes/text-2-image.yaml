@@ -6,7 +6,7 @@ training:
   train_batch_size: 6
   train_gradient_accumulation_steps: 1
   sample_num_steps: 50
-  output_dir: "/workspace/ddpo/gc"
+  output_dir: "/workspace/t2i"
   log_with: "tensorboard" 
   log_eval_num_samples: 10 
   log_eval_every: 1
@@ -18,6 +18,10 @@ training:
   sample_num_batches_per_round: 1 # do not change, must be 1 because of the game state
 
 log_dir: ${training.output_dir}/logs
+
+hydra:
+  run:
+    dir: ${log_dir}
 
 game_manager:
   _target_: genrl_swarm.game.game_manager.BaseGameManager
