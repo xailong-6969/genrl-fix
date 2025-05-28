@@ -42,7 +42,8 @@ class GameManager(abc.ABC): #TODO: Make this use enum
         except ValueError:
             get_logger().info(f"Invalid run mode: {run_mode}. Defaulting to train only.")
             self.mode = RunType.Train
-        self._rank = rank
+        self._rank = rank or self.communication.get_id()
+        self.agent_ids = [self._rank]
 
     @property
     def rank(self) -> int:
