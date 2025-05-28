@@ -43,7 +43,7 @@ class GameManager(abc.ABC): #TODO: Make this use enum
             get_logger().info(f"Invalid run mode: {run_mode}. Defaulting to train only.")
             self.mode = RunType.Train
         self._rank = rank or self.communication.get_id()
-        self.agent_ids = [self._rank]
+        self.agent_ids = [self._rank] #NOTE: Add more if wanted for game/usecase
 
     @property
     def rank(self) -> int:
@@ -112,7 +112,7 @@ class GameManager(abc.ABC): #TODO: Make this use enum
         if self.mode in [RunType.Evaluate, RunType.TrainAndEvaluate]:
             self.trainer.evaluate(self.state, self.data_manager, self.rewards)
     
-        self.state.advance_round(self.data_manager.get_round_data()) # Resets the game state appropriately, stages the next round, and increments round/stage counters appropriatelly
+        self.state.advance_round(self.data_manager.get_round_data(), agent_keys=self.agent_ids) # Resets the game state appropriately, stages the next round, and increments round/stage counters appropriatelly
         self.rewards.reset()
         self._hook_after_round_advanced() # Call hook
 
