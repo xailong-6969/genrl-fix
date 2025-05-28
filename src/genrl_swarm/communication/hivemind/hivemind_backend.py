@@ -17,7 +17,7 @@ class HivemindRendezvouz:
     def init(cls, is_master: bool = False):
         if cls._STORE is None:
             cls._IS_MASTER = is_master
-            world_size = int(os.environ.get("WORLD_SIZE", 1))
+            world_size = int(os.environ.get("HIVEMIND_WORLD_SIZE", 1))
             cls._STORE = dist.TCPStore(
                 host_name=os.environ["MASTER_ADDR"],
                 port=int(os.environ["MASTER_PORT"]),
@@ -53,7 +53,7 @@ class HivemindBackend(Communication):
         initial_peers: List[str] | None = None,
         timeout: int = 600,
     ):
-        self.world_size = int(os.environ.get("WORLD_SIZE", 1))
+        self.world_size = int(os.environ.get("HIVEMIND_WORLD_SIZE", 1))
         self.timeout = timeout
         bootstrap = HivemindRendezvouz.is_bootstrap()
         self.dht = None

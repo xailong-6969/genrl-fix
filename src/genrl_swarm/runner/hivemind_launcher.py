@@ -14,7 +14,7 @@ from genrl_swarm.logging_utils.global_defs import get_logger
 @hydra.main(version_base=None)
 def main(cfg: DictConfig):
     master_addr = os.environ["MASTER_ADDR"]
-    world_size = os.environ.get("WORLD_SIZE", 1)
+    world_size = os.environ.get("HIVEMIND_WORLD_SIZE", 1)
     node_address = socket.gethostname()
     full_node_address = socket.getfqdn()
     is_master = full_node_address == master_addr
@@ -43,4 +43,5 @@ def main(cfg: DictConfig):
 
 
 if __name__ == "__main__":
+    os.environ["HYDRA_FULL_ERROR"] = "1"
     main()

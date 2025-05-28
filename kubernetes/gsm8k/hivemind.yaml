@@ -64,7 +64,7 @@ spec:
           command:
             - bash
             - -c
-            - 'cp -r /home/gensyn/shared/source/genrl-swarm ~/ && cd ~/genrl-swarm && pip install .[examples] && . scripts/train_hivemind.sh gsm8k gsm8k.yaml'
+            - 'cp -r /home/gensyn/shared/source/genrl-swarm ~/ && cd ~/genrl-swarm && pip install .[examples] && . scripts/train_hivemind.sh gsm8k gsm8k_hivemind.yaml'
 
           env:
           - name: MASTER_ADDR
@@ -74,7 +74,7 @@ spec:
           - name: MASTER_PORT
             value: '29500'
 
-          - name: WORLD_SIZE
+          - name: HIVEMIND_WORLD_SIZE
             value: '2'
 
           # Feel free to add more ports below.
