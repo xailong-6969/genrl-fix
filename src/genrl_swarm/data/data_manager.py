@@ -1,5 +1,6 @@
 import abc
-from typing import Any, Iterable, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
+# from datasets import load_dataset, Dataset
 
 
 class DataManager(abc.ABC):
@@ -43,7 +44,6 @@ class DataManager(abc.ABC):
         """
         pass
 
-
 class TokenizedDataManager(DataManager):
     @abc.abstractmethod
     def encode(self, text: str) -> Any:
@@ -52,3 +52,21 @@ class TokenizedDataManager(DataManager):
     @abc.abstractmethod
     def decode(self, tokens: Any) -> str:
         pass
+
+# class LocalMemoryTextDM(DataManager):
+#     # --- Helper Methods ---
+#     def load_HF_dataset(self,
+#                         dataset_id: str,
+#                         split: str | None = 'train',
+#                         num_samples: int | None = None,
+#                         seed: int | None = None
+#                         ) -> Dataset:
+#         # Load dataset from HuggingFace
+#         dataset_raw = load_dataset(dataset_id, "main", split=split)
+#         if seed is not None:
+#             dataset_raw = dataset_raw.shuffle(seed=seed)
+#         if num_samples is not None:
+#             dataset_raw = dataset_raw.select(range(num_samples))
+#         return dataset_raw
+    
+#     # --- Main DataManager Methods ---

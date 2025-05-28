@@ -24,12 +24,11 @@ class Stage0Rewards:
         completions, answers = parse_game_state(game_state, self.stage)
         rewards = {} #Key per agent
         for agent in completions:
-            rewards[agent] = [] #Will store a list per batch item
-            for batch_idx, _ in enumerate(completions[agent]):
-                batch_rewards = []
-                for node_idx, _ in enumerate(completions[agent][batch_idx]):
-                    batch_rewards.append(self.reward_fn(completions[agent][batch_idx][node_idx], answers[agent][batch_idx][node_idx]))
-                rewards[agent].append(batch_rewards)
+            rewards[agent] = {} #Will store a list per batch item
+            for batch_id in completions[agent]:
+                rewards[agent][batch_id] = []
+                for node_idx, _ in enumerate(completions[agent][batch_id]):
+                    rewards[agent][batch_id].append(self.reward_fn(completions[agent][batch_id][node_idx], answers[agent][batch_id][node_idx]))
         return rewards
     
 class Stage1Rewards:
@@ -57,12 +56,11 @@ class Stage1Rewards:
         completions, valid = parse_game_state(game_state, self.stage)
         rewards = {} #Key per agent
         for agent in completions:
-            rewards[agent] = [] #Will store a list per batch item
-            for batch_idx, _ in enumerate(completions[agent]):
-                batch_rewards = []
-                for node_idx, _ in enumerate(completions[agent][batch_idx]):
-                    batch_rewards.append(self.reward_fn(completions[agent][batch_idx][node_idx], valid[agent][batch_idx][node_idx]))
-                rewards[agent].append(batch_rewards)
+            rewards[agent] = {} #Will store a list per batch item
+            for batch_id in completions[agent]:
+                rewards[agent][batch_id] = []
+                for node_idx, _ in enumerate(completions[agent][batch_id]):
+                    rewards[agent][batch_id].append(self.reward_fn(completions[agent][batch_id][node_idx], valid[agent][batch_id][node_idx]))
         return rewards
     
 class Stage2Rewards:
@@ -87,10 +85,9 @@ class Stage2Rewards:
         completions, answers = parse_game_state(game_state, self.stage)
         rewards = {} #Key per agent
         for agent in completions:
-            rewards[agent] = [] #Will store a list per batch item
-            for batch_idx, _ in enumerate(completions[agent]):
-                batch_rewards = []
-                for node_idx, _ in enumerate(completions[agent][batch_idx]):
-                    batch_rewards.append(self.reward_fn(completions[agent][batch_idx][node_idx], answers[agent][batch_idx][node_idx]))
-                rewards[agent].append(batch_rewards)
+            rewards[agent] = {} #Will store a list per batch item
+            for batch_id in completions[agent]:
+                rewards[agent][batch_id] = []
+                for node_idx, _ in enumerate(completions[agent][batch_id]):
+                    rewards[agent][batch_id].append(self.reward_fn(completions[agent][batch_id][node_idx], answers[agent][batch_id][node_idx]))
         return rewards

@@ -53,43 +53,40 @@ def extract_responses(completion: str, pattern: str = r'Choice:.*?Student #([\d]
     return "None"
 
 #Game state parsers
-def get_completions(game_state: GameState, stage: int) -> Dict[Any, List[List[str]]]:
+def get_completions(game_state: GameState, stage: int) -> Dict[Any, Dict[Any, List[Any]]]:
     #Get completions per agent and batch item from corresponding set of actions 
     actions = game_state.get_stage_actions(stage)
     completions = {} #Key per agent
     for agent in actions:
-        completions[agent] = [] #Will store a list per batch item
-        for batch_idx, _ in enumerate(actions[agent]):
-            batch_completions = [] #Will store all completion strings for this batch item for this agent
-            for node, _ in enumerate(actions[agent][batch_idx]):
-                batch_completions.append(actions[agent][batch_idx][node])
-            completions[agent].append(batch_completions)
+        completions[agent] = {} #Will store a list per batch item
+        for batch_id in actions[agent]:
+            completions[agent][batch_id] = [] #Will store all completion strings for this batch item for this agent
+            for node, _ in enumerate(actions[agent][batch_id]):
+                completions[agent][batch_id].append(actions[agent][batch_id][node])
     return completions #Indices are [Agent][Batch Item][Node Idx][Completion]
 
-def get_answers(game_state: GameState, stage: int) -> Dict[Any, List[str]]:
+def get_answers(game_state: GameState, stage: int) -> Dict[Any, Dict[Any, List[Any]]]:
     #Get answers per agent and batch item from corresponding set of world-states 
     world_states = game_state.get_stage_state(stage)
     answers = {} #Key per agent
     for agent in world_states:
-        answers[agent] = [] #Will store an answer (or list of valid choices) per batch item
-        for batch_idx, _ in enumerate(world_states[agent]):
-            batch_answers = []
-            for node, _ in enumerate(world_states[agent][batch_idx]):
-                batch_answers.append(world_states[agent][batch_idx][node][0]['answer'])
-            answers[agent].append(batch_answers) #Pull the answer for this batch item from the environment state
+        answers[agent] = {} #Will store an answer (or list of valid choices) per batch item
+        for batch_id in world_states[agent]:
+            answers[agent][batch_id] = []
+            for node, _ in enumerate(world_states[agent][batch_id]):
+                answers[agent][batch_id].append(world_states[agent][batch_id][node][0]['answer'])
     return answers #Indices are [Agent][Batch Item][Node Idx]
 
-def get_responses(game_state: GameState, stage: int) -> Dict[Any, List[str]]:
+def get_responses(game_state: GameState, stage: int) -> Dict[Any, Dict[Any, List[Any]]]:
     #Get responses being included as input to the current stage from the corresponding set of world-states
     world_states = game_state.get_stage_state(stage)
     responses = {} #Key per agent
     for agent in world_states:
-        responses[agent] = [] #Will store an answer (or list of valid choices) per batch item
-        for batch_idx, _ in enumerate(world_states[agent]):
-            batch_responses = []
-            for node_idx, _ in enumerate(world_states[agent][batch_idx]):
-                batch_responses.append(world_states[agent][batch_idx][node_idx][1])
-            responses[agent].append(batch_responses)
+        responses[agent] = {} #Will store an answer (or list of valid choices) per batch item
+        for batch_id in world_states[agent]:
+            responses[agent][batch_id] = []
+            for node_idx, _ in enumerate(world_states[agent][batch_id]):
+                responses[agent][batch_id].append(world_states[agent][batch_id][node_idx][1])
     return responses #Indices are [Agent][Batch Item][Node Idx]
 
 def parse_game_state(game_state, stage):

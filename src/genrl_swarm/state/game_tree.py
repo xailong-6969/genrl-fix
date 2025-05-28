@@ -278,12 +278,12 @@ class DefaultGameTree(GameTree):
                 else:
                     for action in node.actions: #NOTE: Assumes rollout is wrapped in an iterable
                         child = GameNode(stage=stage,
-                                        node_idx=len(self.__getitem__(stage)),
-                                        environment_states=node.environment_states,
-                                        opponent_states=node.opponent_states,
-                                        personal_states=action,
-                                        actions=None
-                                        )
+                                         node_idx=len(self.__getitem__(stage)),
+                                         environment_states=node.environment_states,
+                                         opponent_states=node.opponent_states,
+                                         personal_states=action,
+                                         actions=None
+                                         )
                         _, _ = node.append_child(child), child.append_parent(node)
                         self.__getitem__(stage).append(child)
         self.metadata['num_nodes'] += len(self.__getitem__(stage))

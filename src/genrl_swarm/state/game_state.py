@@ -1,15 +1,14 @@
 from dataclasses import dataclass
 from typing import Any, List, Dict, Tuple, Callable
-from genrl_swarm.state.game_tree import GameTree, DefaultGameTree
+from genrl_swarm.state.game_tree import DefaultGameTree
 
 @dataclass
 class GameState:
     round: int
     stage: int
-    swarm_size: int = 1 # Number of agents
 
     trees: Dict[Any, Dict[int, Callable]] | None = None # [Agent][Batch][GameTree]    
-    game_tree_factory: GameTree = DefaultGameTree #GameTree data structure to use for building tree
+    game_tree_factory: Callable = DefaultGameTree #GameTree data structure to use for building tree
     
     def __post_init__(self) -> None:
         if self.round < 0:
@@ -22,14 +21,19 @@ class GameState:
     
     def _init_game(self, 
                    round_data: List[Tuple[Any]], 
+                   agent_keys: List[Any] = [0],
                    world_state_pruners: Dict[str, Callable | None] = None,
                    game_tree_brancher: Dict[str, Callable | None] = None
                    ) -> None:
         """
-        For each agent this builds a game tree with only a root for each datum in the round_data batch
+        For each agent this builds a game tree with only a root for each datum in the round_data batch.
+        Assumes all agents on this device will operate on the same round_data.
+
+        NOTE: Will hash input data for making sure game trees get updates with only relevant round_data when communicating across the swarm.
         
         Inputs:
-            Tuple[Any]: Tuple of world state needed for defining an agent's input for this node. Has form (environment_states, opponent_states, personal_states)
+            List[Tuple[Any]]: List containing tuples of world state needed for defining an agent's input for this device. Each Tuple of world states has the form (state_key_metadata, environment_states, opponent_states, personal_states)
+            List[Any]: List containing agent keys for each agent that will be "hosted" on this device
         """
         if world_state_pruners is not None:
             self.world_state_pruners = world_state_pruners #Game-specific pruner functions for passing to game trees. Defines what state details are relevant to a stage + should be broacast. NOTE: Using None here means no pruning of that type of state!
@@ -39,64 +43,65 @@ class GameState:
         self.batch_size = len(round_data)
         
         self.trees = {}
-        for agent in range(self.swarm_size):
+        for agent in agent_keys:
             self.trees[agent] = {}
             for batch_idx in range(self.batch_size):
-                self.trees[agent][batch_idx] = self.game_tree_factory(round_data[batch_idx]) #NOTE: Assumes round data is a list containting tuples with indices for environment, opponent, and personal states respectively
+                self.trees[agent][round_data[batch_idx][0]] = self.game_tree_factory(round_data[batch_idx][1:]) #NOTE: Assumes round data is a list containting tuples with indices for environment, opponent, and personal states respectively
 
-    def advance_round(self, round_data: List[Tuple[Any]]) -> None:
+    def advance_round(self, 
+                      round_data: List[Tuple[Any]], 
+                      agent_keys: List[Any] = [0]
+                      ) -> None:
         """Increments round, restarts stage count, and initializes game tree on the new round's data"""
         self.round += 1
         self.stage = 0
-        self._init_game(round_data)
+        self._init_game(round_data, agent_keys)
         
-    def get_stage_state(self, stage_num: int) -> Dict[Any, List[List[List[Any]]]]:
+    def get_stage_state(self, stage_num: int) -> Dict[Any, Dict[Any, List[List[Any]]]]:
         """
         Returns required state information for preparing a data batch from the desired stage
         
         Returns:
-            Dict[List[List[Tuple[Any]]]]: Dict keyed on agents containing a list for each batch item that contains a list for each node for the desired stage. 
+            Dict[Dict[List[List[Any]]]]: Dict keyed on agents containing a dict keyed on batch item ids that contains a list for each node for the desired stage. 
                                           The list per node in the desired stage contains tuples with state information required for preparing the corresponding agent's data batch for the desired stage. 
                                           Tuples have the form (environment_states, opponent_states, personal_states)
         """
         if self.trees and len(self.trees) > 0:
             agents = {}
-            for agent_idx in range(self.swarm_size):
-                agents[agent_idx] = []
-                for batch_idx in range(self.batch_size):
-                    batch_states = []
-                    batch_nodes = self.trees[agent_idx][batch_idx][stage_num]
+            for agent in self.trees:
+                agents[agent] = {}
+                for batch_id in self.trees[agent]:
+                    agents[agent][batch_id] = []
+                    batch_nodes = self.trees[agent][batch_id][stage_num]
                     for node_idx in range(len(batch_nodes)):
                         world_state = [batch_nodes[node_idx]['environment_states'], 
                                        batch_nodes[node_idx]['opponent_states'], 
                                        batch_nodes[node_idx]['personal_states']
                                        ]
-                        batch_states.append(world_state)
-                    agents[agent_idx].append(batch_states)
+                        agents[agent][batch_id].append(world_state)
             return agents # [Agents][Batch][Node Idx in Stage][World State]
         else:
             raise RuntimeError("Trying to get game state information, but game trees are not defined.")
         
-    def get_stage_actions(self, stage_num: int) -> Dict[Any, List[List[Any]]]:
+    def get_stage_actions(self, stage_num: int) -> Dict[Any, Dict[Any, List[Any]]]:
         """
         Returns actions stored in the nodes of a stage
         NOTE: Behaves similarly to get_stage_state, but loses a dimension since actions are a singleton object within nodes. That said, they can be any type depending on game specifics.
 
         Returns:
-            Dict[List[List[Any]]]: Dict keyed on agents containing a list for each batch item that contains a list for each node for the desired stage. 
+            Dict[Dict[List[Any]]]: Dict keyed on agents containing a dict keyed on batch item ids that contains a list for each node for the desired stage. 
                                    The list per node in the desired stage contains actions for said node.
         """
         if self.trees and len(self.trees) > 0:
             agents = {}
-            for agent_idx in range(self.swarm_size):
-                agents[agent_idx] = []
-                for batch_idx in range(self.batch_size):
-                    batch_states = []
-                    batch_nodes = self.trees[agent_idx][batch_idx][stage_num]
+            for agent in self.trees:
+                agents[agent] = {}
+                for batch_id in self.trees[agent]:
+                    agents[agent][batch_id] = []
+                    batch_nodes = self.trees[agent][batch_id][stage_num]
                     for node_idx in range(len(batch_nodes)):
                         actions = batch_nodes[node_idx]['actions']
-                        batch_states.append(actions)
-                    agents[agent_idx].append(batch_states)
+                        agents[agent][batch_id].append(actions)
             return agents # [Agents][Batch][Node Idx in Stage]
         else:
             raise RuntimeError("Trying to get game state information, but game trees are not defined.")
@@ -109,23 +114,19 @@ class GameState:
         """Get stage state for current stage of the game"""
         return self.get_stage_actions(self.stage) # [Agents][Batch][Node Idx in Current Stage]
     
-    def append_actions(self, agent_actions: Dict[Any, List[List[Any]]]) -> List[bool]: 
+    def append_actions(self, agent_actions: Dict[Any, List[List[Any]]]) -> None: 
         """
         Takes outputs generated/made by an agent and appends it to the corresponding nodes
         At a high-level this method performs the following operations:
             1. Updates the generations to appropriate nodes
             2. Create nodes for the next stage and fill their round states as much as possible
-
-        Returns:
-            List[bool]: List of bools, where each bool corresponds with a game tree tracked by this agent. 
-                        Bool is True if all branches of said game tree are terminal (i.e., this game tree is done) else False 
         """
         if self.trees and len(self.trees) > 0:
-            for agent in range(self.swarm_size):
-                for batch_idx in range(self.batch_size):
-                    for node_idx in range(len(agent_actions[agent][batch_idx])):
-                        self.trees[agent][batch_idx].append_node_actions(stage=self.stage, node_idx=node_idx, actions=agent_actions[agent][batch_idx][node_idx]) #Append rollout to current node
-                    self.trees[agent][batch_idx].commit_actions_from_stage(stage=self.stage, tree_branching_functions=self.tree_branching_functions) #Signals that the agent is "done" with this tree for this stage+makes children and/or sets nodes as terminal.
+            for agent in self.trees:
+                for batch_id in self.trees[agent]:
+                    for node_idx in range(len(agent_actions[agent][batch_id])):
+                        self.trees[agent][batch_id].append_node_actions(stage=self.stage, node_idx=node_idx, actions=agent_actions[agent][batch_id][node_idx]) #Append rollout to current node
+                    self.trees[agent][batch_id].commit_actions_from_stage(stage=self.stage, tree_branching_functions=self.tree_branching_functions) #Signals that the agent is "done" with this tree for this stage+makes children and/or sets nodes as terminal.
         else:
             raise RuntimeError("Trying to update game trees, but game trees are not defined.")
 
@@ -135,10 +136,10 @@ class GameState:
         """
         if self.trees and len(self.trees) > 0:
             self.stage += 1 #Increment stage
-            for agent in range(self.swarm_size):
-                for batch_idx in range(self.batch_size):
-                    stage_nodes = self.trees[agent][batch_idx][self.stage]
+            for agent in self.trees:
+                for batch_id in self.trees[agent]:
+                    stage_nodes = self.trees[agent][batch_id][self.stage]
                     for node_idx in range(len(stage_nodes)):
-                        self.trees[agent][batch_idx].append_node_states(stage=self.stage, node_idx=node_idx, states=world_states[agent][batch_idx][node_idx], pruning_functions=self.world_state_pruners) #Assumes new stage's nodes relevant to a parent were created at the moment when we "commited" during append generation
+                        self.trees[agent][batch_id].append_node_states(stage=self.stage, node_idx=node_idx, states=world_states[agent][batch_id][node_idx], pruning_functions=self.world_state_pruners) #Assumes new stage's nodes relevant to a parent were created at the moment when we "commited" during append generation
         else:
             raise RuntimeError("Trying to update game trees, but game trees are not defined.")

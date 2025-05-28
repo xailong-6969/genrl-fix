@@ -33,7 +33,8 @@ class GameManager(abc.ABC): #TODO: Make this use enum
         self.communication = communication
         self.roles = role_manager
         self.mode = run_mode.lower()
-        self._rank = rank
+        self._rank = rank or self.communication.get_id()
+        self.agent_ids = [self._rank] #NOTE: Add more if wanted for game/usecase
 
     @property
     def rank(self) -> int:
@@ -91,13 +92,13 @@ class GameManager(abc.ABC): #TODO: Make this use enum
             self.trainer.train(self.state, self.data_manager, self.rewards) #TODO(Discuss): Current implementation will treat all "local" agents the same and do a single training pass on one of them using data from all of them. Same with generation since trainer is single model-centric
         if self.mode in ['evaluate', 'train_and_evaluate']:
             self.trainer.evaluate(self.state, self.data_manager, self.rewards)
-        self.state.advance_round(self.data_manager.get_round_data()) # Resets the game state appropriately, stages the next round, and increments round/stage counters appropriatelly
+        self.state.advance_round(self.data_manager.get_round_data(), agent_keys=self.agent_ids) # Resets the game state appropriately, stages the next round, and increments round/stage counters appropriatelly
         self.rewards.reset()
 
     def run_game(self):
         # Initialize game and/or run specific details of game state
         world_state_pruners, game_tree_brancher = self.aggregate_game_state_methods()
-        self.state._init_game(self.data_manager.get_round_data(), world_state_pruners=world_state_pruners, game_tree_brancher=game_tree_brancher) # Prepare game trees within the game state for the initial round's batch of data
+        self.state._init_game(self.data_manager.get_round_data(), agent_keys=self.agent_ids, world_state_pruners=world_state_pruners, game_tree_brancher=game_tree_brancher) # Prepare game trees within the game state for the initial round's batch of data
         # Loop through rounds until end of the game is hit
         while not self.end_of_game():
             try:
@@ -109,28 +110,31 @@ class GameManager(abc.ABC): #TODO: Make this use enum
                 raise        
 
 
-class DefaultGameManagerMixin: #TODO: Add basic functionality to these methods!
+class DefaultGameManagerMixin:
+    """
+    Defines some default behaviour for games with a "shared memory", "linked list" game tree structure, and fixed duration, i.e. the next stage only ever has a single child and all state information from last stage can be "safely" inherited and nodes stop having children at a specific stage.
+    """
     #Optional methods
-    def environment_state_pruner(self) -> Any:
+    def environment_state_pruner(self, input: Any) -> Any:
         """
         Optional pruning function for environment states. The format and data types of environment states is game-specific, so exact behaviours should reflect this.
         WARNING: Output of this function is directly set as the environment state of nodes in game tree, which may in turn used for constructing input to your models/agents!
         """
-        pass
+        return input
     
-    def opponent_state_pruner(self) -> Any:
+    def opponent_state_pruner(self, input: Any) -> Any:
         """
         Optional pruning function for opponent states. The format and data types of opponent states is game-specific, so exact behaviours should reflect this.
         WARNING: Output of this function is directly set as the opponent state of nodes in game tree, which may in turn used for constructing input to your models/agents!
         """
-        pass
+        return input
     
-    def personal_state_pruner(self) -> Any:
+    def personal_state_pruner(self, input: Any) -> Any:
         """
         Optional pruning function for personal states. The format and data types of personal states is game-specific, so exact behaviours should reflect this.
         WARNING: Output of this function is directly set as the personal state of nodes in game tree, which may in turn used for constructing input to your models/agents!
         """
-        pass
+        return input
     
     def terminal_game_tree_node_decider(self, stage_nodes: List[GameNode]) -> List[GameNode]:
         """
@@ -140,7 +144,13 @@ class DefaultGameManagerMixin: #TODO: Add basic functionality to these methods!
         Return:
             List[GameNode]: List of nodes from the game tree that should be designated as terminal/leaves. Empty list indicates no nodes should be set as terminal for this tree after said stage.
         """
-        return []
+        terminal = []
+        for node in stage_nodes:
+            if node["stage"] < self.max_stage-1: #NOTE: For custom terminal functions, you may want to add in your own more complex logic in here for deciding whether a node is terminal. For example, in something like chess, you may want to add logic for checking for checkmates, etc.
+                pass
+            else:
+                terminal.append(node)
+        return terminal
 
     def stage_inheritance_function(self, stage_nodes: List[GameNode]) -> List[List[GameNode]]:
         """
@@ -150,14 +160,26 @@ class DefaultGameManagerMixin: #TODO: Add basic functionality to these methods!
         Return:
             List[List[GameNode]]: List of lists of game nodes, where outer-most list contains a list for each node in the input (i.e., stage_nodes) and each inner-list contains children nodes.  
         """
-        #TODO(discuss): Need to explain this better... How do we make it more intuitive?
-        pass
+        stage_children = []
+        for i, node in enumerate(stage_nodes):
+            children = []
+            if not node._is_leaf_node(): #NOTE: For custom inheritance functions, you may want to add your own loop in here to generate several children according to whatever logic you desire
+                child = GameNode(stage=node.stage+1,
+                                 node_idx=0, #Will be overwritten by the game tree if not correct
+                                 environment_states=node.environment_states,
+                                 opponent_states=node.opponent_states,
+                                 personal_states=node.personal_states,
+                                 actions=None
+                                 )
+                children.append(child)
+            stage_children.append(children)
+        return stage_children
   
 
-class BaseGameManager(GameManager):
+class BaseGameManager(DefaultGameManagerMixin, GameManager):
     """
-    Default GameManager with some basic functionality baked-in.
-    Will end the game when max_rounds is reached, end a round when max_stage is reached, and prune according to top-k rewards from previous stage.
+    Basic GameManager with basic functionality baked-in.
+    Will end the game when max_rounds is reached, end a round when max_stage is reached.
     """
     def __init__(self,
                  max_stage: int,
