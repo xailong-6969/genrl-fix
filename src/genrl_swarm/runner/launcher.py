@@ -9,6 +9,8 @@ import torch.distributed
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from torch.distributed.elastic.multiprocessing.errors import record
+from genrl_swarm.communication.communication import Communication
+from genrl_swarm.communication.distributed.torch_comm import TorchBackend
 from genrl_swarm.logging_utils.global_defs import get_logger
 
 
@@ -81,4 +83,5 @@ def main(cfg: DictConfig) -> None:
 
 if __name__ == "__main__":
     os.environ["HYDRA_FULL_ERROR"] = "1"
+    Communication.set_backend(TorchBackend)
     main()

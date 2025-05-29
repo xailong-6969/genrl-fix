@@ -25,17 +25,18 @@ class GameManager(abc.ABC): #TODO: Make this use enum
                  reward_manager: RewardManager, 
                  trainer: TrainerModule, 
                  data_manager: DataManager, 
-                 communication: Communication,
+                 communication: Communication | None = None,
                  role_manager: RoleManager | None = None,
                  run_mode: str = "train",
                  rank: int = 0,
+                 **kwargs,
                  ):
         """Initialization method that stores the various managers needed to orchestrate this game"""
         self.state = game_state
         self.rewards = reward_manager
         self.trainer = trainer
         self.data_manager = data_manager
-        self.communication = communication
+        self.communication = communication or Communication.create(**kwargs)
         self.roles = role_manager
         try:
             self.mode = RunType(run_mode)
@@ -210,7 +211,7 @@ class BaseGameManager(DefaultGameManagerMixin, GameManager):
                  reward_manager: RewardManager, 
                  trainer: TrainerModule, 
                  data_manager: DataManager, 
-                 communication: Communication,
+                 communication: Communication | None = None,
                  role_manager: RoleManager | None = None,
                  run_mode: str = "Train"
                  ):

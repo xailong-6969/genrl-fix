@@ -1,4 +1,3 @@
-import gc
 import logging
 import os
 import socket
@@ -6,8 +5,9 @@ import hydra
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 
+from genrl_swarm.communication.communication import Communication
 from genrl_swarm.communication.hivemind.hivemind_backend import \
-    HivemindRendezvouz
+    HivemindBackend, HivemindRendezvouz
 from genrl_swarm.logging_utils.global_defs import get_logger
 
 
@@ -44,4 +44,5 @@ def main(cfg: DictConfig):
 
 if __name__ == "__main__":
     os.environ["HYDRA_FULL_ERROR"] = "1"
+    Communication.set_backend(HivemindBackend)
     main()
