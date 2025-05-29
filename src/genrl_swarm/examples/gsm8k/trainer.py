@@ -105,7 +105,7 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
             top_k=self.args.top_k,
             min_p=self.args.min_p,
             repetition_penalty=self.args.repetition_penalty,
-            num_return_sequences=self.num_generations #TODO: CONFIRM THIS WORKS AS EXPECTED!!!! Currently set to default value
+            # num_return_sequences=self.num_generations #TODO: Doesn't do what we want... figure out better fix
         )
 
     def _initialize_trainer(self):
@@ -118,26 +118,35 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         )
         self.trainer.compute_loss = self.compute_loss
 
-    def _process_inputs(self, inputs, with_template=True):
+    def _process_inputs(self, inputs, with_template=True, for_training=False):
         if hasattr(inputs, 'to_dict'):
             inputs = [dict(inputs[i]) for i in range(len(inputs))]
         elif isinstance(inputs, dict):
             inputs = [inputs]
 
-        if with_template:
-            templated_prompts = [apply_chat_template(item, self.processing_class)['prompt'] for item in inputs]
+        if with_template: #Pick up here!!!! Remove the for generation arg and instead unflatten the templated prompts to get back tensor of shape [batch size, completions, tokens]
+            if for_training:
+                templated_prompts = []
+                for item in inputs:
+                    for _ in range(self.num_generations):
+                        templated_prompts.append(apply_chat_template(item, self.processing_class)['prompt'])
+            else:
+                templated_prompts = [apply_chat_template(item, self.processing_class)['prompt'] for item in inputs]
+
         else:
-            templated_prompts = []
-            for generations in inputs:
-                for output in generations:
-                    templated_prompts.append(output) #[item[0] for item in inputs]
+            if for_training:
+                templated_prompts = []
+                for generations in inputs:
+                    for output in generations:
+                        templated_prompts.append(output) #[item[0] for item in inputs]
+            else:
+                templated_prompts = [item[0] for item in inputs]
 
         input_tokens = self.processing_class(
             text=templated_prompts,
             return_tensors="pt",
             padding=True,
-            truncation=True,
-            max_length=self.args.max_prompt_length,
+            truncation=True
         )
         return input_tokens
 
@@ -154,29 +163,37 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
             Generated outputs in the format expected by the next stage
         """   
         input_tokens = self._process_inputs(inputs)
-        
-        with torch.no_grad():
-            outputs = self.model.generate(
-                input_tokens.input_ids.to(self.model.device),
-                attention_mask=input_tokens.attention_mask.to(self.model.device),
-                generation_config=self.generation_config,
+        rollout, rollout_ids = [], [] #TODO: Revisit this for getting a larger number of completions. Super hacky and ugly currently.
+        for _ in range(self.num_generations):
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    input_tokens.input_ids.to(self.model.device),
+                    attention_mask=input_tokens.attention_mask.to(self.model.device),
+                    generation_config=self.generation_config,
+                )
+                
+            # Extract completions (i.e., removes prompt part)
+            prompt_length = input_tokens.input_ids.size(1)
+            completion_ids = outputs[:, prompt_length:]
+
+            completions = self.processing_class.batch_decode(
+                completion_ids, 
+                skip_special_tokens=True
             )
-            
-        # # Extract completions (remove prompt part)
-        prompt_length = input_tokens.input_ids.size(1)
-        completion_ids = outputs[:, prompt_length:] # TODO: this is broken, not splitting in the correct place
 
-        completions = self.processing_class.batch_decode(
-            completion_ids, 
-            skip_special_tokens=True
-        )
-        if isinstance(completions[0], str):
-            completions = [[x] for x in completions] #todo: G generations per prompt GRPO
-
+            if len(rollout) == 0:
+                rollout = [[comp] for comp in completions]
+                if return_completion_ids:
+                    rollout_ids = [[comp] for comp in completion_ids]
+            else:
+                for idx, comp in enumerate(completions):
+                    rollout[idx].append(comp)
+                    if return_completion_ids:
+                        rollout_ids[idx].append(completion_ids[idx])
         if return_completion_ids:
-            return completions, completion_ids
+            return rollout, rollout_ids
         else:
-            return completions
+            return rollout
     
     def _get_per_token_logps(self, model, input_ids, attention_mask, logits_to_keep):
         """Get the per-token log probabilities for the input tokens.
@@ -316,9 +333,9 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         assert stage_outputs is not None, f"No outputs found for stage {stage}"
 
         model_inputs = {}
-        processed_inputs = self._process_inputs(stage_inputs)
+        processed_inputs = self._process_inputs(stage_inputs, for_training=True)
         model_inputs['prompt_ids'], model_inputs['prompt_mask'] = processed_inputs.input_ids.to(self.model.device), processed_inputs.attention_mask.to(self.model.device)
-        processed_outputs = self._process_inputs(stage_outputs, with_template=False)
+        processed_outputs = self._process_inputs(stage_outputs, with_template=False, for_training=True)
         model_inputs['completion_ids'], model_inputs['completion_mask'] = processed_outputs.input_ids.to(self.model.device), processed_outputs.attention_mask.to(self.model.device)
 
         rewards = reward_manager[stage]
@@ -330,7 +347,8 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
             advantages = (rewards - rewards.mean(dim=1, keepdim=True)) 
             if rewards.shape[1] > 1:
                 advantages /= (rewards.std(dim=1, keepdim=True) + 1e-8)
-
+        advantages = torch.flatten(advantages)
+        
         model_inputs["advantages"] = advantages.squeeze(dim=-1)
         model_inputs["old_per_token_logps"] = None
 

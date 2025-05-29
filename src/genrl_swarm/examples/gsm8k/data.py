@@ -20,7 +20,7 @@ You are reviewing solutions to a given math problem that have been submitted by 
 Before responding to the math problem all students in the study group were instructed to think through the solution of the problem step by step and then state their final answer on its own line after \"Answer:\".
 Ideal solutions to the problem will satisfy three important criteria: 1) Their step by step reasoning is correct, concise, and clearly related to the problem. 2) The last line of the solution should be of the form Answer: $Answer (without quotes) where $Answer is the answer to the problem. 3) The final answer is mathematically correct answer.
 Give a step by step comparison of the different solutions you received and explain why a specific solution is the best according to the three stated criteria (or why no answer is correct).
-The last line of your response should be of the form Choice: $Choice (without quotes) where $Choice is the unique student identifier (marked by <student> </student> tags) of the solution you believe was best or say "None" if no solution was correct.
+The last line of your response should be of the form Choice: $Choice (without quotes) where $Choice is the unique student number of the solution you believe was best or say "None" if no solution was correct.
 Remember to put your final choice on its own line after \"Choice:\".
 """
 
@@ -42,13 +42,17 @@ PROMPT_ROLES = {
 
 class GSM8KDataManager(DataManager):
     def __init__(self,
-                 num_students_to_sample: int | None = None,
-                 num_critics_to_sample: int | None = None,
+                 train_dataset: str | None,
+                 evaluation_dataset: str | None = None,
+                 num_students_to_sample: int | None = None, #TODO: REMOVE
+                 num_critics_to_sample: int | None = None,  #TODO: REMOVE
                  subsampling_method: str | None = None,
                  prompt_generator_role: str | None = None):
         super().__init__()
 
         #TODO: Add in some attributed for users to specify the datasets they want to use+other data related params (e.g., seed and num_samples per batch)
+        self.datasets = {'train': train_dataset, 'evaluation': evaluation_dataset}
+
 
         self.STAGE0_SYSTEM_PROMPT = STAGE0_SYSTEM_PROMPT
         self.STAGE1_SYSTEM_PROMPT = STAGE1_SYSTEM_PROMPT
@@ -100,11 +104,15 @@ class GSM8KDataManager(DataManager):
         pass
         
     def get_round_data(self, 
-                       dataset_id: str = "openai/gsm8k", 
+                       dataset_id: str = None, 
                        split: str | None = 'train', 
-                       num_samples: int | None = 10, 
+                       num_samples: int | None = 5, #TODO: Expose as a param passed to data managers
                        seed: int | None = 561
                        ) -> List[Tuple[Any, Any, Any, Any]]:
+        if dataset_id is not None:
+            pass
+        else:
+            dataset_id = self.datasets['train']
         dataset_raw = self.load_HF_dataset(dataset_id=dataset_id, split=split, num_samples=num_samples, seed=seed)
         # Format it as world states + unique batch item identifier 
         # NOTE: Unique batch item id is only ever used for initializing game trees and for ensuring game states are only edited when communication is appropriate)
@@ -230,11 +238,13 @@ class GSM8KDataManager(DataManager):
             sp.append("The following solutions were suggested for this problem:" + " \n")
             for idx, opponent_response in enumerate(state[1]): #NOTE: Assumes opponent states are already being stored as a list of generated strings from the opponent
                 sp.append(f"--> Student #{idx} said: {opponent_response}\n\n")
+            sp.append('Remember to choose an appropriate \"Student #\" (or say None), explain your choice, put your final choice on its own line after \"Choice:\".\n\n')
         elif stage == 2:
             sp.append(f"{state[0]['prior_stage_user_prompt']}" + "  \n")
             sp.append("After comparing these solutions, the following feedback was given about which answer is best:" + " \n")
             for idx, opponent_response in enumerate(state[1]): #NOTE: Assumes opponent states are already being stored as a list of generated strings from the opponent
                 sp.append(f"--> Criticism #{idx} was: {opponent_response}\n\n")
+            sp.append('Remember to think through your solution step by step and put your answer on its own line after \"Answer:\".\n\n')
         else:
             raise ValueError(f"Unsupported stage for append_to_last_stage_prompt: {stage}")
         return "".join(sp)
@@ -243,8 +253,8 @@ class GSM8KDataManager(DataManager):
         opponent_responses = []
         for agent_id in swarm_states:
             if batch_id in swarm_states[agent_id]:
-                for node_id in swarm_states[agent_id][batch_id]:
-                    agent_action = swarm_states[agent_id][batch_id][node_id]
+                for node_idx, _ in enumerate(swarm_states[agent_id][batch_id]):
+                    agent_action = swarm_states[agent_id][batch_id][node_idx]
                     if isinstance(agent_action, str):
                         opponent_responses.append(agent_action)
                     elif isinstance(agent_action, list):

@@ -1,7 +1,7 @@
 log_dir: /home/gensyn/shared/test
 
 training:
-  max_round: 1
+  max_round: 2
   max_stage: 3
   prune_K: 5
 
@@ -32,9 +32,11 @@ game_manager:
       - _target_: transformers.AutoModelForCausalLM.from_pretrained
         pretrained_model_name_or_path: /home/gensyn/shared/models/qwen-2.5-0.5B-Instruct
         config: trl.trainer.GRPOConfig
+    num_generations: 2
     log_with: tensorboard
   data_manager:
     _target_: genrl_swarm.examples.gsm8k.data.GSM8KDataManager
+    train_dataset: /home/gensyn/shared/data/gsm8k
     # num_students_to_sample, num_critics_to_sample, subsampling_method, prompt_generator_role use defaults
   communication:
     _target_: genrl_swarm.communication.distributed.torch_comm.TorchBackend

@@ -10,14 +10,14 @@ def format_reward(completions: List[str], pattern: str = r"\nAnswer: \d+", weigh
 
 def correctness_reward(completions: List[str], correct: str, pattern: str = r'Answer: .*?([\d,]+(?:\.\d+)?)', weight: float = 1.0, **kwargs):
     rewards = []
-    for completion, ground_truth in zip(completions, correct):
+    for completion in completions:
         try:
             match = re.search(pattern, completion) 
             if match:
                 answer = match.group(1)
                 for remove_char in [',', '$', '%', 'g']:
                     answer = answer.replace(remove_char, '')
-                if abs(float(answer)-float(ground_truth)) < 1e-3:
+                if abs(float(answer)-float(correct)) < 1e-3:
                     rewards.append(weight)
                 else:
                     rewards.append(0.0)

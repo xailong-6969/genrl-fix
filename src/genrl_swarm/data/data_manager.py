@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Callable
 # from datasets import load_dataset, Dataset
 
 
@@ -44,7 +44,7 @@ class DataManager(abc.ABC):
         """
         pass
 
-class TokenizedDataManager(DataManager):
+class TokenizedDataManager(DataManager): #TODO: Remove during spring cleaning
     @abc.abstractmethod
     def encode(self, text: str) -> Any:
         pass
@@ -70,3 +70,29 @@ class TokenizedDataManager(DataManager):
 #         return dataset_raw
     
 #     # --- Main DataManager Methods ---
+#     def get_round_data(self, 
+#                        dataset_id: str, 
+#                        split: str | None,
+#                        environment_to_data_col_map: Dict[str,str],
+#                        col_preprocessing_map: Dict[str, Callable] | None = None,
+#                        num_samples: int | None = 10, 
+#                        seed: int | None = 561
+#                        ) -> List[Tuple[Any, Any, Any, Any]]:
+#         dataset_raw = self.load_HF_dataset(dataset_id=dataset_id, split=split, num_samples=num_samples, seed=seed)
+#         # Format it as world states + unique batch item identifier 
+#         # NOTE: Unique batch item id is only ever used for initializing game trees and for ensuring game states are only edited when communication is appropriate)
+#         dataset_processed = []
+#         for datum in dataset_raw:
+#             env_state = {key: datum[environment_to_data_col_map[key]] for key in environment_to_data_col_map}
+#             if col_preprocessing_map is not None:
+#                 for col in col_preprocessing_map:
+#                     if col in env_state:
+#                         env_state[col] = col_preprocessing_map[col](env_state[col])
+#                     else:
+#                         raise ValueError(f"Received a column preprocessing function for column == {col}, but this column doesn't exist in your environment states whose columns are: {env_state.keys()}")
+            
+#             hash_fxn = hashlib.md5()
+#             hash_fxn.update(str.encode(env_state['question']))
+#             item = (int(hash_fxn.hexdigest(),16), env_state, None, None) #unique batch item id, environment_state, opponent_state, personal_state
+#             dataset_processed.append(item)
+#         return dataset_processed

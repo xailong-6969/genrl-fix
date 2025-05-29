@@ -148,7 +148,7 @@ class DefaultGameManagerMixin:
         Optional pruning function for opponent states. The format and data types of opponent states is game-specific, so exact behaviours should reflect this.
         WARNING: Output of this function is directly set as the opponent state of nodes in game tree, which may in turn used for constructing input to your models/agents!
         """
-        return input
+        return input[:self.prune_K] #TODO: Come back and make this a top-k filter
     
     def personal_state_pruner(self, input: Any) -> Any:
         """
