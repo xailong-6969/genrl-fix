@@ -1,12 +1,13 @@
 import os
 import pickle
 import time
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List
 
 import torch.distributed as dist
 from hivemind import DHT, get_dht_time
 
 from genrl_swarm.communication.communication import Communication
+from genrl_swarm.serialization.game_tree import from_bytes, to_bytes
 
 
 class HivemindRendezvouz:
@@ -80,11 +81,11 @@ class HivemindBackend(Communication):
     def all_gather_object(self, obj: Any) -> Dict[str| int, Any]:
         # TODO(jkolehm): change pickle to something more secure before launching the code.
         key = str(self.step_)
-        pickle_bytes = pickle.dumps(obj)
+        obj_bytes = to_bytes(obj)
         self.dht.store(
             key,
             subkey=str(self.dht.peer_id),
-            value=pickle_bytes,
+            value=obj_bytes,
             expiration_time=get_dht_time() + self.timeout,
         )
         t_ = time.monotonic()
@@ -100,7 +101,7 @@ class HivemindBackend(Communication):
         self.step_ += 1
 
         tmp = sorted(
-            [(key, pickle.loads(value.value)) for key, value in output_.items()],
+            [(key, from_bytes(value.value)) for key, value in output_.items()],
             key=lambda x: x[0],
         )
         return {key: value for key, value in tmp}

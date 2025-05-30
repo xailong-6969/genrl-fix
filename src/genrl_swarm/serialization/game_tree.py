@@ -1,4 +1,3 @@
-from enum import Enum
 from typing import Any, Dict, List, Tuple, Type
 
 
@@ -6,6 +5,7 @@ class ObjType:
     LIST = 1
     DICT = 2
     STRING = 3
+    INTEGER = 4
 
 
 class Serializer:
@@ -51,8 +51,16 @@ def _from_bytes(b: bytes, i: int) -> Tuple[Any, int]:
     return Serializer.from_bytes(obj_type)(b, i)
 
 
+@Serializer.register_deserializer(ObjType.INTEGER)
+def int_from_bytes(b: bytes, i: int) -> Tuple[int, int]:
+    n_bytes = int.from_bytes(b[i : (i + 8)], byteorder="big", signed=False)
+    i += 8
+    value = int.from_bytes(b[i : (i + n_bytes)], byteorder="big", signed=True)
+    return value, i + n_bytes
+
+
 @Serializer.register_deserializer(ObjType.STRING)
-def string_from_bytes(b: bytes, i: int) -> Tuple[Dict[str, Any], int]:
+def string_from_bytes(b: bytes, i: int) -> Tuple[str, int]:
     n_bytes = int.from_bytes(b[i : (i + 8)], byteorder="big", signed=False)
     i += 8
     s = b[i : (i + n_bytes)].decode("utf-8")
@@ -81,6 +89,15 @@ def dict_from_bytes(b: bytes, i: int) -> Tuple[List[Any], int]:
         value, i = _from_bytes(b, i)
         out[key] = value
     return out, i
+
+
+@Serializer.register_serializer(int)
+def int_to_bytes(obj: int) -> bytes:
+    type_bytes = ObjType.INTEGER.to_bytes(length=8, byteorder="big", signed=False)
+    byte_length = (obj.bit_length() + 7) // 8
+    int_bytes = obj.to_bytes(length=byte_length, byteorder="big", signed=True)
+    size_header = byte_length.to_bytes(length=8, byteorder="big", signed=False)
+    return type_bytes + size_header + int_bytes
 
 
 @Serializer.register_serializer(str)
