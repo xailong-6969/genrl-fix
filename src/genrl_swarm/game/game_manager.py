@@ -290,7 +290,6 @@ class SwarmGameManager(BaseGameManager):
         self.coordinator = coordinator
         round, stage = self.coordinator.get_round_and_stage()
         self.state.round = round
-        self.state.stage = stage
         self.communication.step_ = self.state.round #initialize communication module to contract's round
 
         get_logger().info(f"🐱 Hello 🐈 [{animal_name}] 🦮 [{peer_id}]!")
