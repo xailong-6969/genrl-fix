@@ -1,15 +1,17 @@
 log_dir: /workspace/gsm8k
 
 training:
-  max_round: 10000
+  max_round: 1000000
   max_stage: 3
   prune_K: 5
 
 blockchain:
-  initial_peers: null # this is the production address "/ip4/38.101.215.13/tcp/30002/p2p/QmQ2gEXoPJg6iMBSUFWGzAabS2VhnzuS782Y637hGjfsRJ"
+  initial_peers:
+    - '/ip4/38.101.215.14/tcp/31111/p2p/QmQ2gEXoPJg6iMBSUFWGzAabS2VhnzuS782Y637hGjfsRJ'
+    - '/ip4/38.101.215.14/tcp/31222/p2p/QmWhiaLrx3HRZfgXc2i7KW5nMUNK7P9tRc71yFJdGEZKkC'
   alchemy_url: "https://gensyn-testnet.g.alchemy.com/public"
-  contract_address: "0x69C6e1D608ec64885E7b185d39b04B491a71768C"
-  org_id: null
+  contract_address: ${oc.env:SWARM_CONTRACT} # This is set by modal-login in run_rl_swarm.sh
+  org_id: ${oc.env:ORG_ID,null} # This is set by modal-login in run_rl_swarm.sh
   mainnet_chain_id: 685685 # currently unused, will be used with WalletSwarmCoordinator
   modal_proxy_url: "http://localhost:3000/api/"
 
@@ -22,6 +24,7 @@ game_manager:
   max_stage: ${training.max_stage}
   max_round: ${training.max_round}
   prune_K: ${training.prune_K}
+  log_dir: ${log_dir}
   game_state: 
     _target_: genrl_swarm.state.GameState
     round: 0
@@ -48,6 +51,7 @@ game_manager:
     log_dir: ${log_dir}
   data_manager:
     _target_: genrl_swarm.examples.gsm8k.data.GSM8KDataManager
+    train_dataset: openai/gsm8k
     # num_students_to_sample, num_critics_to_sample, subsampling_method, prompt_generator_role use defaults
   communication:
     _target_: genrl_swarm.communication.hivemind.hivemind_backend.HivemindBackend

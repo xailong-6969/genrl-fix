@@ -11,6 +11,7 @@ from genrl_swarm.communication.communication import Communication
 from genrl_swarm.roles import RoleManager #TODO: Implement RoleManager+Pass to game manager
 from genrl_swarm.communication import Communication
 from genrl_swarm.blockchain import SwarmCoordinator
+from genrl_swarm.communication.hivemind.name_utils import get_name_from_peer_id
 
 
 class RunType(Enum):
@@ -255,8 +256,11 @@ class SwarmGameManager(BaseGameManager):
                  data_manager: DataManager, 
                  communication: Communication,
                  role_manager: RoleManager | None = None,
-                 run_mode: str = "Train"
+                 run_mode: str = "Train",
+                 log_dir: str = "logs"
                  ):
+        import logging 
+        import os
         super().__init__(
             max_stage=max_stage,
             max_round=max_round,
@@ -269,11 +273,30 @@ class SwarmGameManager(BaseGameManager):
             role_manager=role_manager,
             run_mode=run_mode
         )
+        #Logging Setup
+        peer_id = self.communication.get_id()
+        animal_name = get_name_from_peer_id(peer_id)
+        format_msg = f"[{animal_name}] %(asctime)s %(levelname)s: %(message)s"
+        logging.basicConfig(level=logging.INFO, format=format_msg)
+        formatter = logging.Formatter(format_msg)
+        file_handler = logging.FileHandler(
+            os.path.join(log_dir, f"training_{animal_name}.log")
+        )
+        file_handler.setFormatter(formatter)
+        _LOG = get_logger()
+        _LOG.addHandler(file_handler)
+
+
         self.coordinator = coordinator
         round, stage = self.coordinator.get_round_and_stage()
         self.state.round = round
         self.state.stage = stage
-        get_logger().info(f"Starting round: {self.state.round}/{self.max_round}. Starting stage: {self.state.stage}/{self.max_stage}.")
+        self.communication.step_ = self.state.round #initialize communication module to contract's round
+
+        get_logger().info(f"🐱 Hello 🐈 [{animal_name}] 🦮 [{peer_id}]!")
+        get_logger().info(f"bootnodes: {self.coordinator.get_bootnodes()}")
+        get_logger().info(f"Starting round: {self.state.round}/{self.max_round}.")
+        
 
     def _get_total_rewards(self):
         rewards = self.rewards.rewards

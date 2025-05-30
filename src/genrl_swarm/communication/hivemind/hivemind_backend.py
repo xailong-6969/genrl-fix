@@ -12,11 +12,13 @@ from genrl_swarm.communication.communication import Communication
 class HivemindRendezvouz:
     _STORE = None
     _IS_MASTER = False
+    _IS_LAMBDA = False
 
     @classmethod
     def init(cls, is_master: bool = False):
-        if cls._STORE is None:
-            cls._IS_MASTER = is_master
+        cls._IS_MASTER = is_master
+        cls._IS_LAMBDA = os.environ.get("LAMBDA", False)
+        if cls._STORE is None and cls._IS_LAMBDA:
             world_size = int(os.environ.get("HIVEMIND_WORLD_SIZE", 1))
             cls._STORE = dist.TCPStore(
                 host_name=os.environ["MASTER_ADDR"],
@@ -33,13 +35,14 @@ class HivemindRendezvouz:
     @classmethod
     def set_initial_peers(cls, initial_peers):
         pass
-        if cls._STORE is None:
+        if cls._STORE is None and cls._IS_LAMBDA:
             cls.init()
-        cls._STORE.set("initial_peers", pickle.dumps(initial_peers))
+        if cls._IS_LAMBDA:
+            cls._STORE.set("initial_peers", pickle.dumps(initial_peers))
 
     @classmethod
     def get_initial_peers(cls):
-        if cls._STORE is None:
+        if cls._STORE is None and cls._IS_LAMBDA:
             cls.init()
         cls._STORE.wait(["initial_peers"])
         peer_bytes = cls._STORE.get("initial_peers")
