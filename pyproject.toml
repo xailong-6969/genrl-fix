@@ -34,4 +34,4 @@ dev = [
     "pytest",
 ]
 
-examples = ["trl", "diffusers", "peft"]
+examples = ["trl", "diffusers", "peft", "reasoning-gym"]
