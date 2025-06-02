@@ -105,7 +105,7 @@ class GameManager(abc.ABC): #TODO: Make this use enum
     def run_game_round(self):
         # Loop through stages until end of round is hit
         while not self.end_of_round():
-            self.run_game_stage() # Generates rollout and updates the game state #TODO(Discuss): Ugly, but gets the job done?
+            self.run_game_stage() # Generates rollout and updates the game state
             swarm_states = self.communication.all_gather_object(self.state.get_latest_actions()[self.rank])
             world_states = self.data_manager.prepare_states(self.state, swarm_states) #Maps states received via communication with the swarm to RL game tree world states
             self.state.advance_stage(world_states) # Prepare for next stage
@@ -114,7 +114,7 @@ class GameManager(abc.ABC): #TODO: Make this use enum
         self._hook_after_rewards_updated() # Call hook
 
         if self.mode in [RunType.Train, RunType.TrainAndEvaluate]:
-            self.trainer.train(self.state, self.data_manager, self.rewards) #TODO(Discuss): Current implementation will treat all "local" agents the same and do a single training pass on one of them using data from all of them. Same with generation since trainer is single model-centric
+            self.trainer.train(self.state, self.data_manager, self.rewards) 
         if self.mode in [RunType.Evaluate, RunType.TrainAndEvaluate]:
             self.trainer.evaluate(self.state, self.data_manager, self.rewards)
     

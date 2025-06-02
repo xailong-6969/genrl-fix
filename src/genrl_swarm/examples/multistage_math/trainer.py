@@ -43,7 +43,7 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         if not models or len(models) < 1:
             raise ValueError("At least one model must be provided")
         
-        self.model = models[0] #TODO(johnny): how to pick model? #TODO(Discuss): How to settup multiple models here? Should be tethered to agent index that'll be given by gamestate. Maybe loop here and add a lil model ID datum to the gamestate?
+        self.model = models[0] #TODO(Discuss): How to settup multiple models here? Should be tethered to agent index that'll be given by gamestate. Maybe loop here and add a lil model ID datum to the gamestate?
         
         # Configuration parameters
         config = kwargs.get("config", None)
@@ -103,8 +103,7 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
             top_p=self.args.top_p,
             top_k=self.args.top_k,
             min_p=self.args.min_p,
-            repetition_penalty=self.args.repetition_penalty,
-            # num_return_sequences=self.num_generations #TODO: Doesn't do what we want... figure out better fix
+            repetition_penalty=self.args.repetition_penalty
         )
 
     def _initialize_trainer(self):
@@ -398,8 +397,6 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         metrics.update({'train/rewards': rewards.cpu().mean().item()})
         self.log(metrics, global_step)
 
-        self.cleanup_step()
-
         return global_step
 
     @torch.no_grad()
@@ -464,11 +461,9 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         trainer.generation_config = trainer_state["generation_config"]
         
         return trainer
-    
-    def cleanup_step(self):
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        gc.collect()
 
     def cleanup(self):
         self.cleanup_trackers()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        gc.collect()

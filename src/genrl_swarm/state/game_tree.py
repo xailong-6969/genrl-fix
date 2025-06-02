@@ -151,7 +151,6 @@ class GameTree(abc.ABC):
         """
         pass
     
-    #TODO: New nodes will be made from in here. Make sure num_nodes is being updated!
     @abc.abstractmethod
     def commit_actions_from_stage(self,
                                   stage: int,
@@ -181,7 +180,7 @@ class GameTree(abc.ABC):
         return node_list
     
     # Methods for emulating a mapping container object
-    def __getitem__(self, key): #TODO(discuss): Is this resonable behaviour? 
+    def __getitem__(self, key):
         try:
             return getattr(self, str(key))
         except:
