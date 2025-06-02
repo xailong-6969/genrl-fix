@@ -56,6 +56,7 @@ class HivemindBackend(Communication):
         self,
         initial_peers: List[str] | None = None,
         timeout: int = 600,
+        **kwargs,
     ):
         self.world_size = int(os.environ.get("HIVEMIND_WORLD_SIZE", 1))
         self.timeout = timeout
@@ -66,6 +67,7 @@ class HivemindBackend(Communication):
                 start=True,
                 host_maddrs=[f"/ip4/0.0.0.0/tcp/0", "/ip4/0.0.0.0/udp/0/quic"],
                 initial_peers=initial_peers,
+                **kwargs,
             )
             dht_maddrs = self.dht.get_visible_maddrs()
             HivemindRendezvouz.set_initial_peers(dht_maddrs)
@@ -75,6 +77,7 @@ class HivemindBackend(Communication):
                 start=True,
                 host_maddrs=[f"/ip4/0.0.0.0/tcp/0", "/ip4/0.0.0.0/udp/0/quic"],
                 initial_peers=initial_peers,
+                **kwargs,
             )
         self.step_ = 0
 

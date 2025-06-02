@@ -56,6 +56,7 @@ game_manager:
   communication:
     _target_: genrl_swarm.communication.hivemind.hivemind_backend.HivemindBackend
     initial_peers: ${blockchain.initial_peers}
+    identity_path: ${oc.env:IDENTITY_PATH,null}
   coordinator:
     _target_: genrl_swarm.blockchain.coordinator.ModalSwarmCoordinator
     web3_url: ${blockchain.alchemy_url}
