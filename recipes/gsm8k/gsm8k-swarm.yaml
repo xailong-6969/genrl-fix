@@ -20,7 +20,7 @@ hydra:
     dir: ${log_dir}
 
 game_manager:
-  _target_: genrl_swarm.game.game_manager.SwarmGameManager
+  _target_: genrl_swarm.examples.gsm8k.game_manager_no_payload.MSMSwarmGameManager
   max_stage: ${training.max_stage}
   max_round: ${training.max_round}
   prune_K: ${training.prune_K}

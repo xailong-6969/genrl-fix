@@ -1,3 +1,3 @@
-from .communication import Communication
+from .communication import Communication, Payload
 
-__all__ = ["Communication"]
+__all__ = ["Communication", "Payload"]

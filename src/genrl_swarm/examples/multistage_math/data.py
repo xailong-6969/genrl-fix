@@ -79,6 +79,12 @@ class MSMDataManager(LocalMemoryTextDataManager):
         self.STAGE1_SYSTEM_PROMPT = STAGE1_SYSTEM_PROMPT
         self.STAGE2_SYSTEM_PROMPT = STAGE2_SYSTEM_PROMPT
         self.PROMPT_ROLES = PROMPT_ROLES
+
+    def initialize(self):
+        # NOTE: Placeholder for any specific initialization logic needed by the manager
+        #       For example, pre-loading datasets if they are static and large
+        print(f"Multi-Stage Math Data Manager initialized with: datasets={self.datasets}, num_samples={self.num_samples}, seed={self.seed}, role={self.prompt_generator_role}")
+        pass
         
     # --- Helper Methods ---
     def extract_hash_answer(self, text: str) -> str | None: 
@@ -134,12 +140,6 @@ class MSMDataManager(LocalMemoryTextDataManager):
         return "".join(sp)
         
     # --- Required Methods ---
-    def initialize(self):
-        # NOTE: Placeholder for any specific initialization logic needed by the manager
-        #       For example, pre-loading datasets if they are static and large
-        print(f"Multi-Stage Math Data Manager initialized with: datasets={self.datasets}, num_samples={self.num_samples}, seed={self.seed}, role={self.prompt_generator_role}")
-        pass
-
     def flatten_states(self, 
                        flattened_input: Dict[str, List[Any]], 
                        state: List[Any], 

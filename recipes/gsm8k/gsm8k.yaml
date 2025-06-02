@@ -6,7 +6,7 @@ training:
   prune_K: 5
 
 game_manager:
-  _target_: genrl_swarm.game.BaseGameManager
+  _target_: genrl_swarm.examples.gsm8k.game_manager_no_payload.MSMGameManager
   max_stage: ${training.max_stage}
   max_round: ${training.max_round}
   prune_K: ${training.prune_K}

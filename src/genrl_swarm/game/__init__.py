@@ -1,3 +1,3 @@
-from .game_manager import GameManager, BaseGameManager
+from .game_manager import GameManager, BaseGameManager, SwarmGameManager, RunType
 
-__all__ = ["GameManager", "BaseGameManager"]
+__all__ = ["GameManager", "BaseGameManager", "SwarmGameManager", "RunType"]

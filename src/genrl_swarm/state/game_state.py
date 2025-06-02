@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, List, Dict, Tuple, Callable
 from genrl_swarm.state.game_tree import DefaultGameTree
+from genrl_swarm.communication import Payload
 
 @dataclass
 class GameState:
@@ -106,13 +107,44 @@ class GameState:
         else:
             raise RuntimeError("Trying to get game state information, but game trees are not defined.")
         
-    def get_latest_state(self) -> Dict[Any, List[List[List[Any]]]]: 
+    def get_stage_communication(self, stage_num: int) -> Dict[Any, Dict[Any, List[Payload]]]:
+        """
+        Returns a communication payload for the specified stage of the game.
+        
+        Returns:
+            Dict[Dict[Payload]]: Dict keyed on agents containing a dict keyed on batch item ids that contains a list with a communication payload for each node in the desired stage.
+        """
+        if self.trees and len(self.trees) > 0:
+            agents = {}
+            for agent in self.trees:
+                agents[agent] = {}
+                for batch_id in self.trees[agent]:
+                    agents[agent][batch_id] = []
+                    batch_nodes = self.trees[agent][batch_id][stage_num]
+                    for node_idx in range(len(batch_nodes)):
+                        world_state = [batch_nodes[node_idx]['environment_states'], 
+                                       batch_nodes[node_idx]['opponent_states'], 
+                                       batch_nodes[node_idx]['personal_states']
+                                       ]
+                        actions = batch_nodes[node_idx]['actions']
+                        metadata = batch_nodes[node_idx]['metadata']
+                        payload = Payload(world_state=world_state, actions=actions, metadata=metadata)
+                        agents[agent][batch_id].append(payload)
+            return agents # [Agents][Batch][Node Idx in Stage][World State]
+        else:
+            raise RuntimeError("Trying to get game state information, but game trees are not defined.")
+        
+    def get_latest_state(self) -> Dict[Any, Dict[Any, List[List[Any]]]]: 
         """Get stage state for current stage of the game"""
         return self.get_stage_state(self.stage) # [Agents][Batch][Nodes in Current Stage][World State]
     
-    def get_latest_actions(self) -> Dict[Any, List[List[Any]]]: #NOTE(Jari): Here is the method you asked for in case I forget to mention it
+    def get_latest_actions(self) -> Dict[Any, Dict[Any, List[Any]]]:
         """Get stage state for current stage of the game"""
         return self.get_stage_actions(self.stage) # [Agents][Batch][Node Idx in Current Stage]
+    
+    def get_latest_communication(self) -> Dict[Any, Dict[Any, List[Payload]]]:
+        """Prepare communication payload dataclass for current stage of the game"""
+        return self.get_stage_communication(self.stage) # [Agents][Batch][Nodes in Current Stage][World State]
     
     def append_actions(self, agent_actions: Dict[Any, List[List[Any]]]) -> None: 
         """

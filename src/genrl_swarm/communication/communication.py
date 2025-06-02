@@ -1,6 +1,7 @@
 import abc
 import inspect
 from typing import Any, Dict, Type
+from dataclasses import dataclass
 
 
 class Communication(abc.ABC):
@@ -32,3 +33,19 @@ class Communication(abc.ABC):
             if name != "self"
         }
         return cls._BACKEND_CLS(**params)
+
+@dataclass
+class Payload:
+    """
+    Provides a template for organizing objects being communicated throughout the swarm.
+    """
+    world_state: Any = None
+    actions: Any = None
+    metadata: Any = None
+
+    # Methods for emulating a mapping container object
+    def __getitem__(self, key):
+        return getattr(self, key)
+
+    def __setitem__(self, key, value):
+        setattr(self, key, value)

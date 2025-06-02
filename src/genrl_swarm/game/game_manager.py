@@ -106,7 +106,7 @@ class GameManager(abc.ABC): #TODO: Make this use enum
         # Loop through stages until end of round is hit
         while not self.end_of_round():
             self.run_game_stage() # Generates rollout and updates the game state
-            swarm_states = self.communication.all_gather_object(self.state.get_latest_actions()[self.rank])
+            swarm_states = self.communication.all_gather_object(self.state.get_latest_communication()[self.rank])
             world_states = self.data_manager.prepare_states(self.state, swarm_states) #Maps states received via communication with the swarm to RL game tree world states
             self.state.advance_stage(world_states) # Prepare for next stage
     
@@ -156,7 +156,7 @@ class DefaultGameManagerMixin:
         Optional pruning function for opponent states. The format and data types of opponent states is game-specific, so exact behaviours should reflect this.
         WARNING: Output of this function is directly set as the opponent state of nodes in game tree, which may in turn used for constructing input to your models/agents!
         """
-        return input[:self.prune_K] #TODO: Come back and make this a top-k filter
+        return input
     
     def personal_state_pruner(self, input: Any) -> Any:
         """
