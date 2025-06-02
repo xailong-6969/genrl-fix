@@ -78,6 +78,10 @@ class GameManager(abc.ABC): #TODO: Make this use enum
     def _hook_after_round_advanced(self):
         """Hook method called after the round is advanced and rewards are reset."""
         pass
+
+    def _hook_after_game(self):
+        """Hook method called after the game is finished."""
+        pass
     
     #Helper methods
     def aggregate_game_state_methods(self) -> Tuple[Dict[str, Callable], Dict[str, Callable]]:
@@ -128,9 +132,11 @@ class GameManager(abc.ABC): #TODO: Make this use enum
                 get_logger().info(f"Starting round: {self.state.round}/{getattr(self, 'max_round', None)}.")
                 self.run_game_round() # Loops through stages until end of round signal is received
             except:
-                self.trainer.cleanup()
                 get_logger().exception("Exception occurred during game run.", stack_info=True)
-                raise        
+                break
+
+        self._hook_after_game()
+        self.trainer.cleanup()        
 
 
 class DefaultGameManagerMixin:
@@ -257,10 +263,13 @@ class SwarmGameManager(BaseGameManager):
                  communication: Communication,
                  role_manager: RoleManager | None = None,
                  run_mode: str = "Train",
-                 log_dir: str = "logs"
+                 log_dir: str = "logs",
+                 hf_token: str | None = None
                  ):
         import logging 
         import os
+        from huggingface_hub import login
+
         super().__init__(
             max_stage=max_stage,
             max_round=max_round,
@@ -274,25 +283,39 @@ class SwarmGameManager(BaseGameManager):
             run_mode=run_mode
         )
         #Logging Setup
-        peer_id = self.communication.get_id()
-        animal_name = get_name_from_peer_id(peer_id)
-        format_msg = f"[{animal_name}] %(asctime)s %(levelname)s: %(message)s"
+        self.peer_id = self.communication.get_id()
+        self.animal_name = get_name_from_peer_id(self.peer_id, True)
+        format_msg = f"[{self.animal_name}] %(asctime)s %(levelname)s: %(message)s"
         logging.basicConfig(level=logging.INFO, format=format_msg)
         formatter = logging.Formatter(format_msg)
         file_handler = logging.FileHandler(
-            os.path.join(log_dir, f"training_{animal_name}.log")
+            os.path.join(log_dir, f"training_{self.animal_name}.log")
         )
         file_handler.setFormatter(formatter)
         _LOG = get_logger()
         _LOG.addHandler(file_handler)
 
-
+        #Register peer_id and get current round from the chain
         self.coordinator = coordinator
-        round, stage = self.coordinator.get_round_and_stage()
+        self.coordinator.register_peer(self.peer_id)
+        round, _ = self.coordinator.get_round_and_stage()
         self.state.round = round
         self.communication.step_ = self.state.round #initialize communication module to contract's round
 
-        get_logger().info(f"🐱 Hello 🐈 [{animal_name}] 🦮 [{peer_id}]!")
+        #enable push to HF if token was provided
+        self.hf_token = hf_token
+        if self.hf_token not in [None, "None"]:
+            from huggingface_hub import whoami
+            username = whoami()["name"]
+            model_name = self.trainer.trainer.model.config.name_or_path.split('/')[-1] 
+            model_name += '-Gensyn-Swarm'
+            model_name += f"-{self.animal_name}"
+            self.trainer.trainer.args.hub_model_id = f"{username}/{model_name}"
+            self.trainer.args.push_to_hub = True
+            self.trainer.args.hub_token = self.hf_token
+            login(self.hf_token)
+
+        get_logger().info(f"🐱 Hello 🐈 [{get_name_from_peer_id(self.peer_id)}] 🦮 [{self.peer_id}]!")
         get_logger().info(f"bootnodes: {self.coordinator.get_bootnodes()}")
         get_logger().info(f"Starting round: {self.state.round}/{self.max_round}.")
         
@@ -321,4 +344,24 @@ class SwarmGameManager(BaseGameManager):
         # total_rewards = self._get_total_rewards()
         # winners = 'agent with max rewards I guess' # need to attribute rewards to peer_ids
         # self.coordinator.submit_winners(self.state.round, winners, self.communication.dht.peer_id)
-        pass
+        self._save_to_hf()
+
+    def _hook_after_game(self):
+        self._save_to_hf()
+
+    def _save_to_hf(self):
+        if self.hf_token not in [None, "None"]:
+            get_logger().info(f"pushing model to huggingface")
+            try:
+                self.trainer.trainer.push_to_hub(
+                    tags=[
+                        "rl-swarm",
+                        "grpo",
+                        "gensyn",
+                        f"I am {self.animal_name}",
+                    ]
+                )
+            except Exception:
+                get_logger().exception(
+                    "Failed to push model to the Hugging Face Hub. When you conclude training please try manually pushing it yourself using the instructions here: https://huggingface.co/docs/hub/en/models-uploading"
+                , stack_info=True)
