@@ -1,4 +1,8 @@
+import sys
+from types import NoneType
+
 from typing import Any, Dict, List, Tuple, Type
+from genrl_swarm.communication.communication import Payload
 
 
 class ObjType:
@@ -6,6 +10,9 @@ class ObjType:
     DICT = 2
     STRING = 3
     INTEGER = 4
+    BOOLEAN = 5
+    PAYLOAD = 6
+    NONE = 7
 
 
 class Serializer:
@@ -90,6 +97,46 @@ def dict_from_bytes(b: bytes, i: int) -> Tuple[List[Any], int]:
         out[key] = value
     return out, i
 
+@Serializer.register_deserializer(ObjType.PAYLOAD)
+def payload_from_bytes(b: bytes, i: int) -> Tuple[List[Any], int]:
+    world_state, i = _from_bytes(b, i)
+    actions, i = _from_bytes(b, i)
+    metadata, i = _from_bytes(b, i)
+    return Payload(world_state=world_state, actions=actions, metadata=metadata), i
+
+@Serializer.register_deserializer(ObjType.NONE)
+def none_from_bytes(b: bytes, i: int) -> Tuple[List[Any], int]:
+    return None, i
+
+@Serializer.register_deserializer(ObjType.BOOLEAN)
+def boolean_from_bytes(b: bytes, i: int) -> Tuple[List[Any], int]:
+    return b[i] == b"0", i+1
+
+@Serializer.register_serializer(bool)
+def boolean_to_bytes(obj: bool) -> bytes:
+    type_bytes = ObjType.BOOLEAN.to_bytes(length=8, byteorder="big", signed=False)
+    bool_bytes = b"0" if not obj else b"1"
+    return type_bytes + bool_bytes
+
+@Serializer.register_serializer(NoneType)
+def none_to_bytes(obj: None) -> bytes:
+    return ObjType.NONE.to_bytes(length=8, byteorder="big", signed=False)
+
+@Serializer.register_serializer(Payload)
+def payload_to_bytes(obj: Payload) -> bytes:
+    type_bytes = ObjType.PAYLOAD.to_bytes(length=8, byteorder="big", signed=False)
+    world_state_bytes = to_bytes(obj.world_state)
+    actions_bytes = to_bytes(obj.actions)
+    metadata_bytes = to_bytes(obj.metadata)
+    return type_bytes + world_state_bytes + actions_bytes + metadata_bytes
+
+@Serializer.register_serializer(int)
+def int_to_bytes(obj: int) -> bytes:
+    type_bytes = ObjType.INTEGER.to_bytes(length=8, byteorder="big", signed=False)
+    byte_length = sys.getsizeof(obj)
+    int_bytes = obj.to_bytes(length=byte_length, byteorder="big", signed=True)
+    size_header = byte_length.to_bytes(length=8, byteorder="big", signed=False)
+    return type_bytes + size_header + int_bytes
 
 @Serializer.register_serializer(int)
 def int_to_bytes(obj: int) -> bytes:

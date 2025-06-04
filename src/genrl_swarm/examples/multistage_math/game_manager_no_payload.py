@@ -1,12 +1,7 @@
-import hashlib
 from typing import Any, List
 from genrl_swarm.game import BaseGameManager, RunType
-from random import sample
+from genrl_swarm.misc_utils.utils import generate_md5_hash_id
 
-def generate_md5_hash_id(hashable_obj: Any) -> int: #TODO: Add this into a package-wide util during spring cleaning and remove from text data manager utils...
-    hash_fxn = hashlib.md5()
-    hash_fxn.update(str.encode(hashable_obj))
-    return int(hash_fxn.hexdigest(),16)
 
 class MSMGameManager(BaseGameManager):
     """

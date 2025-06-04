@@ -8,6 +8,7 @@ from numpy import ndarray
 
 from genrl_swarm.state import GameState
 from genrl_swarm.data import DataManager
+from genrl_swarm.misc_utils.utils import generate_md5_hash_id
 
 class LocalMemoryTextDataManager(DataManager):
     def __init__(self,
@@ -53,11 +54,6 @@ class LocalMemoryTextDataManager(DataManager):
             dataset_raw = dataset_raw.select(range(num_samples))
         return dataset_raw
     
-    def generate_md5_hash_id(self, hashable_obj: Any) -> int:
-        hash_fxn = hashlib.md5()
-        hash_fxn.update(str.encode(hashable_obj))
-        return int(hash_fxn.hexdigest(),16)
-    
     def filter_swarm_states(self, swarm_states: Dict[Any, Any], batch_id: Any) -> List[str]:
         '''
         Consumes data received from the communication step and unpacking it into something that will be combined with prior world-state to form a world-state for the next stage
@@ -95,7 +91,7 @@ class LocalMemoryTextDataManager(DataManager):
         '''
         Generates unique hashes for a given batch item. 
         '''
-        return self.generate_md5_hash_id(hashable_obj)
+        return generate_md5_hash_id(hashable_obj)
     
     def prompt_map(self, flattened_data: Any) -> Any: #TODO: Come up with a better term than "flattened" data
         '''

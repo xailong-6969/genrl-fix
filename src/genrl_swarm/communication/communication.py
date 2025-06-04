@@ -35,7 +35,7 @@ class Communication(abc.ABC):
         return cls._BACKEND_CLS(**params)
 
 @dataclass
-class Payload:
+class Payload(dict):
     """
     Provides a template for organizing objects being communicated throughout the swarm.
     """

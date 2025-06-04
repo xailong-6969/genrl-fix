@@ -18,7 +18,6 @@ class GameState:
             self.stage = 0
         self.world_state_pruners = {"environment_pruner": None, "opponent_pruner": None, "personal_pruner": None}
         self.tree_branching_functions = {"terminal_node_decision_function": None, "stage_inheritance_function": None}
-
     
     def _init_game(self, 
                    round_data: List[Tuple[Any]], 
@@ -49,6 +48,7 @@ class GameState:
             for batch_idx in range(self.batch_size):
                 self.trees[agent][round_data[batch_idx][0]] = self.game_tree_factory(round_data[batch_idx][1:]) #NOTE: Assumes round data is a list containting tuples with indices for environment, opponent, and personal states respectively
 
+    #Core methods
     def advance_round(self, 
                       round_data: List[Tuple[Any]], 
                       agent_keys: List[Any] = [0]

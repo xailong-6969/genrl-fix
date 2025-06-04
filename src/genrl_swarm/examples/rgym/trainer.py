@@ -313,7 +313,7 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         """
         self.model.train()
         global_step = self.global_step
-        for stage in range(state.stage-1):
+        for stage in range(state.stage):
             global_step = self.step(stage, state, data_manager, reward_manager, global_step)
         self.global_step = global_step
         self.model.eval()
@@ -397,7 +397,6 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         metrics.update({'train/rewards': rewards.cpu().mean().item()})
         self.log(metrics, global_step)
 
-
         self.cleanup_step()
 
         return global_step
@@ -465,7 +464,6 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         
         return trainer
 
-
     def cleanup_step(self):
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -473,4 +471,3 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
 
     def cleanup(self):
         self.cleanup_trackers()
-

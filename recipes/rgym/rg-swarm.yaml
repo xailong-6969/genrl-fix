@@ -1,0 +1,74 @@
+log_dir: /workspace/reasoning-gym
+
+training:
+  max_round: 1000000
+  max_stage: 1
+  prune_K: 5
+  hf_push_frequency: 20
+  num_generations: 2
+  seed: 42
+
+blockchain:
+  initial_peers:
+    - '/ip4/38.101.215.14/tcp/31111/p2p/QmQ2gEXoPJg6iMBSUFWGzAabS2VhnzuS782Y637hGjfsRJ'
+    - '/ip4/38.101.215.14/tcp/31222/p2p/QmWhiaLrx3HRZfgXc2i7KW5nMUNK7P9tRc71yFJdGEZKkC'
+  alchemy_url: "https://gensyn-testnet.g.alchemy.com/public"
+  contract_address: ${oc.env:SWARM_CONTRACT} # This is set by modal-login in run_rl_swarm.sh
+  org_id: ${oc.env:ORG_ID,null} # This is set by modal-login in run_rl_swarm.sh
+  mainnet_chain_id: 685685 # currently unused, will be used with WalletSwarmCoordinator
+  modal_proxy_url: "http://localhost:3000/api/"
+
+hydra:
+  run:
+    dir: ${log_dir}
+
+game_manager:
+  _target_: genrl_swarm.game.game_manager.SwarmGameManager
+  max_stage: ${training.max_stage}
+  max_round: ${training.max_round}
+  prune_K: ${training.prune_K}
+  log_dir: ${log_dir}
+  hf_token: ${oc.env:HUGGINGFACE_ACCESS_TOKEN,null}
+  hf_push_frequency: ${training.hf_push_frequency}
+  game_state: 
+    _target_: genrl_swarm.state.game_state.GameState
+    round: 0
+    stage: 0
+  reward_manager:
+    _target_: genrl_swarm.rewards.DefaultRewardManager
+    reward_fn_store:
+      _target_: genrl_swarm.rewards.reward_store.RewardFnStore
+      max_rounds: ${training.max_round}
+      reward_fn_stores:
+        - _target_: genrl_swarm.rewards.reward_store.RoundRewardFnStore
+          num_stages: ${training.max_stage}
+          reward_fns:
+            - _target_: genrl_swarm.examples.rgym.rewards.RGRewards
+  trainer:
+    _target_: genrl_swarm.examples.rgym.trainer.GRPOTrainerModule
+    models:
+      - _target_: transformers.AutoModelForCausalLM.from_pretrained
+        pretrained_model_name_or_path: Gensyn/Qwen2.5-0.5B-Instruct
+        config: trl.trainer.GRPOConfig
+    log_with: tensorboard
+    log_dir: ${log_dir}
+    num_generations: ${training.num_generations}
+  data_manager:
+    _target_: genrl_swarm.examples.rgym.data.ReasoningGymDataManager
+    yaml_config_path: "genrl-swarm/src/genrl_swarm/examples/rgym/datasets.yaml"
+    num_train_samples: 2
+    num_evaluation_samples: 2
+    system_prompt_id: 'default'
+    seed: ${training.seed}
+  communication:
+    _target_: genrl_swarm.communication.hivemind.hivemind_backend.HivemindBackend
+    initial_peers: ${blockchain.initial_peers}
+    identity_path: ${oc.env:IDENTITY_PATH,null}
+  coordinator:
+    _target_: genrl_swarm.blockchain.coordinator.ModalSwarmCoordinator
+    web3_url: ${blockchain.alchemy_url}
+    contract_address: ${blockchain.contract_address}
+    org_id: ${blockchain.org_id}
+    modal_proxy_url: ${blockchain.modal_proxy_url}
+    
+  run_mode: "Train"

@@ -106,8 +106,8 @@ class GameManager(abc.ABC): #TODO: Make this use enum
         # Loop through stages until end of round is hit
         while not self.end_of_round():
             self.run_game_stage() # Generates rollout and updates the game state
-            swarm_states = self.communication.all_gather_object(self.state.get_latest_communication()[self.rank])
-            world_states = self.data_manager.prepare_states(self.state, swarm_states) #Maps states received via communication with the swarm to RL game tree world states
+            swarm_payloads = self.communication.all_gather_object(self.state.get_latest_communication()[self.rank])
+            world_states = self.data_manager.prepare_states(self.state, swarm_payloads) #Maps states received via communication with the swarm to RL game tree world states
             self.state.advance_stage(world_states) # Prepare for next stage
     
         self.rewards.update_rewards(self.state) # Compute reward functions now that we have all the data needed for this round
@@ -249,7 +249,7 @@ class BaseGameManager(DefaultGameManagerMixin, GameManager):
             return True
 
 
-class SwarmGameManager(BaseGameManager):
+class SwarmGameManager(BaseGameManager, DefaultGameManagerMixin):
     """GameManager that orchestrates a game using a SwarmCoordinator."""
     def __init__(self, 
                  coordinator: SwarmCoordinator, 
@@ -262,9 +262,10 @@ class SwarmGameManager(BaseGameManager):
                  data_manager: DataManager, 
                  communication: Communication,
                  role_manager: RoleManager | None = None,
-                 run_mode: str = "Train",
+                 run_mode: str = "train",
                  log_dir: str = "logs",
-                 hf_token: str | None = None
+                 hf_token: str | None = None,
+                 hf_push_frequency: int = 20,
                  ):
         import logging 
         import os
@@ -313,6 +314,9 @@ class SwarmGameManager(BaseGameManager):
             self.trainer.trainer.args.hub_model_id = f"{username}/{model_name}"
             self.trainer.args.push_to_hub = True
             self.trainer.args.hub_token = self.hf_token
+            self.hf_push_frequency = hf_push_frequency
+            get_logger().info('Logging into Hugging Face Hub...')
+
             login(self.hf_token)
 
         get_logger().info(f"🐱 Hello 🐈 [{get_name_from_peer_id(self.peer_id)}] 🦮 [{self.peer_id}]!")
@@ -350,12 +354,13 @@ class SwarmGameManager(BaseGameManager):
         self._save_to_hf()
 
     def _save_to_hf(self):
-        if self.hf_token not in [None, "None"]:
+        if self.hf_token not in [None, "None"] and self.state.round % self.hf_push_frequency == 0:
             get_logger().info(f"pushing model to huggingface")
             try:
                 self.trainer.trainer.push_to_hub(
                     tags=[
                         "rl-swarm",
+                        "genrl-swarm",
                         "grpo",
                         "gensyn",
                         f"I am {self.animal_name}",
