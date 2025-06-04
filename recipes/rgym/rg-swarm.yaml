@@ -1,4 +1,4 @@
-log_dir: /workspace/reasoning-gym
+log_dir: ${oc.env:ROOT,.}/logs
 
 training:
   max_round: 1000000
