@@ -138,15 +138,6 @@ def int_to_bytes(obj: int) -> bytes:
     size_header = byte_length.to_bytes(length=8, byteorder="big", signed=False)
     return type_bytes + size_header + int_bytes
 
-@Serializer.register_serializer(int)
-def int_to_bytes(obj: int) -> bytes:
-    type_bytes = ObjType.INTEGER.to_bytes(length=8, byteorder="big", signed=False)
-    byte_length = (obj.bit_length() + 7) // 8
-    int_bytes = obj.to_bytes(length=byte_length, byteorder="big", signed=True)
-    size_header = byte_length.to_bytes(length=8, byteorder="big", signed=False)
-    return type_bytes + size_header + int_bytes
-
-
 @Serializer.register_serializer(str)
 def string_to_bytes(obj: str) -> bytes:
     serialized_obj = obj.encode("utf-8")
