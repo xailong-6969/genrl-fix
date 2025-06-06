@@ -4,7 +4,7 @@ training:
   max_round: 1000000
   max_stage: 1
   prune_K: 5
-  hf_push_frequency: 20
+  hf_push_frequency: 1
   num_generations: 2
   seed: 42
 
@@ -13,7 +13,7 @@ blockchain:
     - '/ip4/38.101.215.14/tcp/31111/p2p/QmQ2gEXoPJg6iMBSUFWGzAabS2VhnzuS782Y637hGjfsRJ'
     - '/ip4/38.101.215.14/tcp/31222/p2p/QmWhiaLrx3HRZfgXc2i7KW5nMUNK7P9tRc71yFJdGEZKkC'
   alchemy_url: "https://gensyn-testnet.g.alchemy.com/public"
-  contract_address: ${oc.env:SWARM_CONTRACT} # This is set by modal-login in run_rl_swarm.sh
+  contract_address: ${oc.env:SWARM_CONTRACT,null} # This is set by modal-login in run_rl_swarm.sh
   org_id: ${oc.env:ORG_ID,null} # This is set by modal-login in run_rl_swarm.sh
   mainnet_chain_id: 685685 # currently unused, will be used with WalletSwarmCoordinator
   modal_proxy_url: "http://localhost:3000/api/"
@@ -30,6 +30,7 @@ game_manager:
   log_dir: ${log_dir}
   hf_token: ${oc.env:HUGGINGFACE_ACCESS_TOKEN,null}
   hf_push_frequency: ${training.hf_push_frequency}
+  run_mode: "train"
   game_state: 
     _target_: genrl_swarm.state.game_state.GameState
     round: 0
@@ -48,7 +49,7 @@ game_manager:
     _target_: genrl_swarm.examples.rgym.trainer.GRPOTrainerModule
     models:
       - _target_: transformers.AutoModelForCausalLM.from_pretrained
-        pretrained_model_name_or_path: Gensyn/Qwen2.5-0.5B-Instruct
+        pretrained_model_name_or_path: ${oc.env:MODEL_NAME,Gensyn/Qwen2.5-0.5B-Instruct} #Qwen/Qwen3-0.6B <-11GiB
         config: trl.trainer.GRPOConfig
     log_with: tensorboard
     log_dir: ${log_dir}
@@ -57,7 +58,7 @@ game_manager:
     _target_: genrl_swarm.examples.rgym.data.ReasoningGymDataManager
     yaml_config_path: "genrl-swarm/src/genrl_swarm/examples/rgym/datasets.yaml"
     num_train_samples: 2
-    num_evaluation_samples: 2
+    num_evaluation_samples: 0
     system_prompt_id: 'default'
     seed: ${training.seed}
   communication:
@@ -71,4 +72,3 @@ game_manager:
     org_id: ${blockchain.org_id}
     modal_proxy_url: ${blockchain.modal_proxy_url}
     
-  run_mode: "Train"

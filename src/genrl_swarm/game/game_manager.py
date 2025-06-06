@@ -321,6 +321,7 @@ class SwarmGameManager(BaseGameManager, DefaultGameManagerMixin):
 
         get_logger().info(f"🐱 Hello 🐈 [{get_name_from_peer_id(self.peer_id)}] 🦮 [{self.peer_id}]!")
         get_logger().info(f"bootnodes: {self.coordinator.get_bootnodes()}")
+        get_logger().info(f"Using Model: {self.trainer.model.config.name_or_path}")
         get_logger().info(f"Starting round: {self.state.round}/{self.max_round}.")
         
 

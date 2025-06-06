@@ -56,8 +56,9 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         self.callbacks = kwargs.get("callbacks", [])
         self.save_dir = kwargs.get("log_dir", "./outputs")
         self.global_step = 0
-        self.num_generations = kwargs.get("num_generations", 1)
-
+        self.num_generations = kwargs.get("num_generations", 2)
+        assert self.num_generations > 1, f"For GRPO training, number of generations must be > 1, got {self.num_generations}"
+        
         # Initialize core components
         self._initialize_model()
         self._initialize_tokenizers()
