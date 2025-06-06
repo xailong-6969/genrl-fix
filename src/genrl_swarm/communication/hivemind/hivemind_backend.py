@@ -60,9 +60,9 @@ class HivemindBackend(Communication):
     ):
         self.world_size = int(os.environ.get("HIVEMIND_WORLD_SIZE", 1))
         self.timeout = timeout
-        bootstrap = HivemindRendezvouz.is_bootstrap()
+        self.bootstrap = HivemindRendezvouz.is_bootstrap()
         self.dht = None
-        if bootstrap:
+        if self.bootstrap:
             self.dht = DHT(
                 start=True,
                 host_maddrs=[f"/ip4/0.0.0.0/tcp/0", "/ip4/0.0.0.0/udp/0/quic"],
