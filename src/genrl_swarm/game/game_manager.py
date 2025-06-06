@@ -21,6 +21,7 @@ import os
 import sys
 from huggingface_hub import login, whoami
 from genrl_swarm.communication.hivemind.hivemind_backend import HivemindBackend
+from genrl_swarm.logging_utils.system_utils import get_system_info
 
 
 class RunType(Enum):
@@ -334,7 +335,9 @@ class SwarmGameManager(BaseGameManager, DefaultGameManagerMixin):
         get_logger().info(f"bootnodes: {self.coordinator.get_bootnodes()}")
         get_logger().info(f"Using Model: {self.trainer.model.config.name_or_path}")
         get_logger().info(f"Starting round: {self.state.round}/{self.max_round}.")
-        
+
+        with open(os.path.join(log_dir, f"system_info.txt"), "w") as f:
+            f.write(get_system_info())
 
     def _get_total_rewards_by_agent(self):
         rewards_by_agent = defaultdict(int)
