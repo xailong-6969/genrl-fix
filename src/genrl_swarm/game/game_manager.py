@@ -11,7 +11,7 @@ from genrl_swarm.communication.communication import Communication
 from genrl_swarm.roles import RoleManager #TODO: Implement RoleManager+Pass to game manager
 from genrl_swarm.communication import Communication
 from genrl_swarm.blockchain import SwarmCoordinator
-from genrl_swarm.communication.hivemind.name_utils import get_name_from_peer_id
+from genrl_swarm.misc_utils.name_utils import get_name_from_peer_id
 
 
 class RunType(Enum):
