@@ -34,5 +34,7 @@ dev = [
     "pytest",
 ]
 
-examples = ["trl", "diffusers", "peft", 
-"reasoning-gym @ git+https://github.com/open-thought/reasoning-gym"]
+examples = ["trl", 
+            "diffusers",
+            "peft", 
+            "reasoning-gym>=0.1.20"]
