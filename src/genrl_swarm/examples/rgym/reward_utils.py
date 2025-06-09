@@ -46,7 +46,7 @@ def get_answers(game_state: GameState, stage: int) -> Dict[Any, Dict[Any, List[A
         for batch_id in world_states[agent]:
             answers[agent][batch_id] = []
             for node, _ in enumerate(world_states[agent][batch_id]):
-                answers[agent][batch_id].append(world_states[agent][batch_id][node][0]['answer'])
+                answers[agent][batch_id].append(world_states[agent][batch_id][node].environment_states['answer'])
     return answers #Indices are [Agent][Batch Item][Node Idx]
 
 def get_metadata(game_state: GameState, stage: int) -> Dict[Any, Dict[Any, List[Any]]]:
@@ -58,7 +58,7 @@ def get_metadata(game_state: GameState, stage: int) -> Dict[Any, Dict[Any, List[
         for batch_id in world_states[agent]:
             metadata[agent][batch_id] = []
             for node, _ in enumerate(world_states[agent][batch_id]):
-                metadata[agent][batch_id].append(world_states[agent][batch_id][node][0]['metadata'])
+                metadata[agent][batch_id].append(world_states[agent][batch_id][node].environment_states['metadata'])
     return metadata #Indices are [Agent][Batch Item][Node Idx]
 
 def parse_game_state(game_state, stage):

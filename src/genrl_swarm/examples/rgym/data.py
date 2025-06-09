@@ -6,10 +6,10 @@ from reasoning_gym.composite import CompositeConfig, CompositeDataset
 from reasoning_gym.dataset import ReseedingDataset
 from reasoning_gym.utils import SYSTEM_PROMPTS
 
-from genrl_swarm.state import GameState
+from genrl_swarm.state import GameState, WorldState
 from genrl_swarm.data import LocalMemoryTextDataManager
 from genrl_swarm.misc_utils.utils import generate_md5_hash_id
-
+from genrl_swarm.logging_utils.global_defs import get_logger
 
 class ReasoningGymDataManager(LocalMemoryTextDataManager):
     """Data Manager for Reasoning Gym Datasets.
@@ -71,6 +71,8 @@ class ReasoningGymDataManager(LocalMemoryTextDataManager):
             
         except Exception as e:
             raise RuntimeError(f"Failed to initialize ReasoningGymDataManager: {str(e)}")
+    
+        self.initialize()
     
     def _create_dataset_splits(self):
         """Create train/eval dataset splits"""
@@ -139,31 +141,31 @@ class ReasoningGymDataManager(LocalMemoryTextDataManager):
         return Dataset.from_dict(dataset_dict)
     
     # --- Helper Methods ---
-    def state_to_system_prompt(self, state: Tuple[Any, Any, Any]) -> str:
+    def state_to_system_prompt(self, state: WorldState) -> str:
         """Return the system prompt for the reasoning task."""
         return self.system_prompt
     
-    def state_to_user_prompt(self, state: Tuple[Any, Any, Any]) -> str:
+    def state_to_user_prompt(self, state: WorldState) -> str:
         """Convert the state to a user prompt."""
-        return state[0]['question']
+        return state.environment_states['question']
     
-    def state_to_answer(self, state: Tuple[Any, Any, Any]) -> str:
+    def state_to_answer(self, state: WorldState) -> str:
         """Extract the answer from the state."""
-        return state[0]['answer']
+        return state.environment_states['answer']
     
     # --- Required Methods ---
     def initialize(self):
         """Initialize the data manager."""
-        print(f"Reasoning Gym Data Manager initialized with config: {self.yaml_config_path}")
-        print(f"Loaded composite dataset with {len(self.composite_dataset)} samples")
-        print(f"Train samples: {self.num_samples['train']}, Eval samples: {self.num_samples['evaluation']}")
-        print(f"Dataset weights: {', '.join([f'{name}: {self.config.get_dataset_weight(name)}' for name in self.composite_dataset.datasets])}")
+        get_logger().info(f"Reasoning Gym Data Manager initialized with config: {self.yaml_config_path}")
+        get_logger().info(f"Loaded composite dataset with {len(self.composite_dataset)} samples")
+        get_logger().info(f"Train samples: {self.num_samples['train']}, Eval samples: {self.num_samples['evaluation']}")
+        get_logger().info(f"Dataset weights: {', '.join([f'{name}: {self.config.get_dataset_weight(name)}' for name in self.composite_dataset.datasets])}")
     
     def flatten_states(self, 
                       flattened_input: Dict[str, List[Any]], 
-                      state: List[Any], 
+                      state: WorldState, 
                       stage: int
-                      ) -> Dict[str, List[Any]]:
+                      ) -> Dict[str, WorldState]:
         """Convert the state into a flattened format for the model input."""
         if flattened_input == {}:
             flattened_input = {'system_prompt': [], 'user_prompt': [], 'answer': [], 'metadata': []}
@@ -172,8 +174,10 @@ class ReasoningGymDataManager(LocalMemoryTextDataManager):
         flattened_input['user_prompt'].append(self.state_to_user_prompt(state))
         flattened_input['answer'].append(self.state_to_answer(state))
         
-        if 'metadata' in state[0]:
-            flattened_input['metadata'].append(state[0]['metadata'])
+        if 'metadata' in state.environment_states:
+            flattened_input['metadata'].append(state.environment_states['metadata'])
+        elif state.metadata is not None:
+            flattened_input['metadata'].append(state.metadata)
         else:
             flattened_input['metadata'].append({})
             
@@ -210,9 +214,6 @@ class ReasoningGymDataManager(LocalMemoryTextDataManager):
         pass
     
     def prepare_states(self, current_state: GameState, swarm_states: Dict[Any, Any]) -> Dict[Any, Dict[Any, List[Tuple[Any]]]]:
-        """ Identity Operation """
-        # world_states = current_state.get_latest_state()
-        # return world_states
         trees = current_state.trees
         for agent in swarm_states:
             if agent not in trees:
@@ -222,7 +223,7 @@ class ReasoningGymDataManager(LocalMemoryTextDataManager):
                     trees[agent][batch_id] = None
                 for payload in swarm_states[agent][batch_id]:
                     received_states, received_actions, received_metadata = payload["world_state"], payload["actions"], payload["metadata"]
-                    world_state, opponent_state, personal_state = received_states
+                    world_state = received_states.environment_states
                     payload_batch_id = generate_md5_hash_id(world_state['question'])
                     assert payload_batch_id == batch_id
                     if trees[agent][batch_id] is None: # we don't have a tree for this batch item, make one and append actions

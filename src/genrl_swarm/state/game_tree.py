@@ -3,6 +3,15 @@ import abc
 from dataclasses import dataclass
 from typing import Any, List, Dict, Tuple, Callable
 
+
+
+@dataclass
+class WorldState:
+    environment_states: List[Any]
+    opponent_states: List[Any]
+    personal_states: List[Any]
+
+
 @dataclass
 class GameNode:
     #TODO: Use enum to avoid string case matching 
@@ -17,11 +26,8 @@ class GameNode:
     parents: List['GameNode'] | None = None #List of parent nodes. Should only point to nodes within the same GameTree whose actions this node's actions depends on
     children: List['GameNode'] | None = None #List of child nodes. Should only point to nodes within the same GameTree whose actions depend on this node's actions
 
-    environment_states: Any = None #State of environment
-    opponent_states: Any = None #State of other agents' actions
-    personal_states: Any = None #State of this agent's prior actions
+    world_state: WorldState = None #World state at the time of node creation
     actions: Any = None #Actions taken as a function of {environment, opponent, agent}-states by agent whose game tree this Node exists in
-
     metadata: Any = None #Placeholder for storing any additional information, context, etc. that isn't directly used by agents in the game yet is useful for computing metrics, etc.
 
     def __post_init__(self) -> None:
@@ -102,7 +108,7 @@ class GameTree(abc.ABC):
     GameTree emulates a mapping container type to facilitate calls from the GameManager (through GameState)
     GameTree assumes the set of nodes are IMMUTABLE. Once a node is added it should not be deleted! NOTE: If you choose to do so, then you risk breaking possibly delicate (and vital) causal dependancies in the GameTree.
     """
-    root_states: Tuple[Any]
+    root_states: WorldState
     metadata: Dict[str, Any] = None
     
     def __post_init__(self) -> None: 
@@ -115,9 +121,7 @@ class GameTree(abc.ABC):
                                                   node_idx=0,
                                                   parents=[],
                                                   children=[], 
-                                                  environment_states=self.root_states[0], 
-                                                  opponent_states=self.root_states[1],
-                                                  personal_states=self.root_states[2],
+                                                  world_state=self.root_states,
                                                   actions=None
                                                   )
             self.metadata['max_depth'] = 0 #Generally should match max stage of the current round #TODO(discuss): Should we rename? Depends how we engage with this thing
@@ -132,7 +136,7 @@ class GameTree(abc.ABC):
     def append_node_states(self, 
                            stage: int, 
                            node_idx: int, 
-                           states: tuple[Any], 
+                           states: WorldState, 
                            pruning_functions: Dict[str, Callable | None]
                            ) -> None:
         """
@@ -207,26 +211,26 @@ class DefaultGameTree(GameTree):
     def append_node_states(self, 
                            stage: int, 
                            node_idx: int, 
-                           states: Tuple[Any], 
+                           states: WorldState, 
                            pruning_functions: Dict[str, Callable | None]
                            ) -> None:
         #Fetch relevant tree node
         node = self.__getitem__(stage)[node_idx]
         #Set environment states
         if pruning_functions["environment_pruner"] is not None:
-            node["environment_states"] = pruning_functions["environment_pruner"](states[0])
+            node.world_state.environment_states = pruning_functions["environment_pruner"](states.environment_states)
         else:
-            node["environment_states"] = states[0]
+            node.world_state.environment_states = states.environment_states
         #Set opponent states
         if pruning_functions["opponent_pruner"] is not None:
-            node["opponent_states"] = pruning_functions["opponent_pruner"](states[1])
+            node.world_state.opponent_states = pruning_functions["opponent_pruner"](states.opponent_states)
         else:
-            node["opponent_states"] = states[1]
+            node.world_state.opponent_states = states.opponent_states
         #Set personal states
         if pruning_functions["personal_pruner"] is not None:
-            node["personal_states"] = pruning_functions["personal_pruner"](states[2])
+            node.world_state.personal_states = pruning_functions["personal_pruner"](states.personal_states)
         else:
-            node["personal_states"] = states[2]       
+            node.world_state.personal_states = states.personal_states       
 
     def append_node_actions(self, 
                             stage: int, 
@@ -278,10 +282,8 @@ class DefaultGameTree(GameTree):
                     for action in node.actions: #NOTE: Assumes rollout is wrapped in an iterable
                         child = GameNode(stage=stage,
                                          node_idx=len(self.__getitem__(stage)),
-                                         environment_states=node.environment_states,
-                                         opponent_states=node.opponent_states,
-                                         personal_states=action,
-                                         actions=None
+                                         world_state=node.world_state,
+                                         actions=action
                                          )
                         _, _ = node.append_child(child), child.append_parent(node)
                         self.__getitem__(stage).append(child)

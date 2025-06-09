@@ -3,6 +3,7 @@ from types import NoneType
 
 from typing import Any, Dict, List, Tuple, Type
 from genrl_swarm.communication.communication import Payload
+from genrl_swarm.state import WorldState 
 
 
 class ObjType:
@@ -12,7 +13,8 @@ class ObjType:
     INTEGER = 4
     BOOLEAN = 5
     PAYLOAD = 6
-    NONE = 7
+    WORLD_STATE = 7
+    NONE = 8
 
 
 class Serializer:
@@ -104,6 +106,13 @@ def payload_from_bytes(b: bytes, i: int) -> Tuple[List[Any], int]:
     metadata, i = _from_bytes(b, i)
     return Payload(world_state=world_state, actions=actions, metadata=metadata), i
 
+@Serializer.register_deserializer(ObjType.WORLD_STATE)
+def world_state_from_bytes(b: bytes, i: int) -> Tuple[WorldState, int]:
+    environment_states, i = _from_bytes(b, i)
+    opponent_states, i = _from_bytes(b, i)
+    personal_states, i = _from_bytes(b, i)
+    return WorldState(environment_states=environment_states, opponent_states=opponent_states, personal_states=personal_states), i
+
 @Serializer.register_deserializer(ObjType.NONE)
 def none_from_bytes(b: bytes, i: int) -> Tuple[List[Any], int]:
     return None, i
@@ -130,6 +139,14 @@ def payload_to_bytes(obj: Payload) -> bytes:
     metadata_bytes = to_bytes(obj.metadata)
     return type_bytes + world_state_bytes + actions_bytes + metadata_bytes
 
+@Serializer.register_serializer(WorldState)
+def world_state_to_bytes(obj: WorldState) -> bytes:
+    type_bytes = ObjType.WORLD_STATE.to_bytes(length=8, byteorder="big", signed=False)
+    environment_states_bytes = to_bytes(obj.environment_states)
+    opponent_states_bytes = to_bytes(obj.opponent_states)
+    personal_bytes = to_bytes(obj.personal_states)
+    return type_bytes + environment_states_bytes + opponent_states_bytes + personal_bytes
+    
 @Serializer.register_serializer(int)
 def int_to_bytes(obj: int) -> bytes:
     type_bytes = ObjType.INTEGER.to_bytes(length=8, byteorder="big", signed=False)

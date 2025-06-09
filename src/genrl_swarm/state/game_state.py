@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 from typing import Any, List, Dict, Tuple, Callable
-from genrl_swarm.state.game_tree import DefaultGameTree
+from genrl_swarm.state.game_tree import DefaultGameTree, WorldState
 from genrl_swarm.communication import Payload
+
 
 @dataclass
 class GameState:
@@ -20,7 +21,7 @@ class GameState:
         self.tree_branching_functions = {"terminal_node_decision_function": None, "stage_inheritance_function": None}
     
     def _init_game(self, 
-                   round_data: List[Tuple[Any]], 
+                   round_data: List[Tuple[str, WorldState]], 
                    agent_keys: List[Any] = [0],
                    world_state_pruners: Dict[str, Callable | None] = None,
                    game_tree_brancher: Dict[str, Callable | None] = None
@@ -46,11 +47,11 @@ class GameState:
         for agent in agent_keys:
             self.trees[agent] = {}
             for batch_idx in range(self.batch_size):
-                self.trees[agent][round_data[batch_idx][0]] = self.game_tree_factory(round_data[batch_idx][1:]) #NOTE: Assumes round data is a list containting tuples with indices for environment, opponent, and personal states respectively
+                self.trees[agent][round_data[batch_idx][0]] = self.game_tree_factory(round_data[batch_idx][1]) #NOTE: Assumes round data is a list containting tuples of [unique_id, WorldState]
 
     #Core methods
     def advance_round(self, 
-                      round_data: List[Tuple[Any]], 
+                      round_data: List[Tuple[str, WorldState]], 
                       agent_keys: List[Any] = [0]
                       ) -> None:
         """Increments round, restarts stage count, and initializes game tree on the new round's data"""
@@ -75,10 +76,7 @@ class GameState:
                     agents[agent][batch_id] = []
                     batch_nodes = self.trees[agent][batch_id][stage_num]
                     for node_idx in range(len(batch_nodes)):
-                        world_state = [batch_nodes[node_idx]['environment_states'], 
-                                       batch_nodes[node_idx]['opponent_states'], 
-                                       batch_nodes[node_idx]['personal_states']
-                                       ]
+                        world_state = batch_nodes[node_idx].world_state
                         agents[agent][batch_id].append(world_state)
             return agents # [Agents][Batch][Node Idx in Stage][World State]
         else:
@@ -101,7 +99,7 @@ class GameState:
                     agents[agent][batch_id] = []
                     batch_nodes = self.trees[agent][batch_id][stage_num]
                     for node_idx in range(len(batch_nodes)):
-                        actions = batch_nodes[node_idx]['actions']
+                        actions = batch_nodes[node_idx].actions
                         agents[agent][batch_id].append(actions)
             return agents # [Agents][Batch][Node Idx in Stage]
         else:
@@ -122,12 +120,9 @@ class GameState:
                     agents[agent][batch_id] = []
                     batch_nodes = self.trees[agent][batch_id][stage_num]
                     for node_idx in range(len(batch_nodes)):
-                        world_state = [batch_nodes[node_idx]['environment_states'], 
-                                       batch_nodes[node_idx]['opponent_states'], 
-                                       batch_nodes[node_idx]['personal_states']
-                                       ]
-                        actions = batch_nodes[node_idx]['actions']
-                        metadata = batch_nodes[node_idx]['metadata']
+                        world_state = batch_nodes[node_idx].world_state
+                        actions = batch_nodes[node_idx].actions
+                        metadata = batch_nodes[node_idx].metadata
                         payload = Payload(world_state=world_state, actions=actions, metadata=metadata)
                         agents[agent][batch_id].append(payload)
             return agents # [Agents][Batch][Node Idx in Stage][World State]

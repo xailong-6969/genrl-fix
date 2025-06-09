@@ -6,7 +6,7 @@ from datasets import load_dataset, Dataset
 from torch import Tensor
 from numpy import ndarray
 
-from genrl_swarm.state import GameState
+from genrl_swarm.state import GameState, WorldState
 from genrl_swarm.data import DataManager
 from genrl_swarm.misc_utils.utils import generate_md5_hash_id
 
@@ -101,12 +101,12 @@ class LocalMemoryTextDataManager(DataManager):
         return {'prompt': prompt}
     
     def merge_swarm_and_node_states(self, 
-                                    node_state: List[Any], 
+                                    node_state: WorldState, 
                                     swarm_states: Dict[Any, Any], 
                                     stage: int, 
                                     agent: Any,
                                     batch_id: Any
-                                    ) -> Tuple[Any, Any, Any]:
+                                    ) -> WorldState:
         '''
         Parses states from a node of in game tree as well as data coming from communication, and merges them into states that will be appended to nodes in the upcoming stage
         '''
@@ -114,11 +114,14 @@ class LocalMemoryTextDataManager(DataManager):
         environment_state['prior_stage_input_states'] = deepcopy(node_state)
         opponent_state = self.prepare_opponent(node_state, swarm_states, stage, agent, batch_id)
         personal_state = self.prepare_personal(node_state, swarm_states, stage, agent, batch_id)
-        return environment_state, opponent_state, personal_state
+        world_state = WorldState(
+            environment_states=environment_state,
+            opponent_states=opponent_state,
+            personal_states=personal_state
+        )
+        return world_state
 
-    # --- Main DataManager Methods ---
-    def get_round_data(self, **kwargs) -> List[Tuple[Any, Any, Any, Any]]:
-        dataset_raw = self.data_generator(dataset_id_or_path=self.datasets['train'], subset=self.data_subset, split=kwargs.get("split", "train"), num_samples=self.num_samples['train'])
+    def prepare_data(self, dataset_raw):
         dataset_processed = []
         for idx, datum in enumerate(dataset_raw): #TODO (gab): Split this into functions that return all three states and set this as default behaviour if they choose not to hijack it
             #Fill environment state with input data about the start of the round.
@@ -135,37 +138,23 @@ class LocalMemoryTextDataManager(DataManager):
                         env_state[col] = self.column_map['preprocessing'][col](env_state[col])
                     else:
                         raise ValueError(f"Received a column preprocessing function for column == {col}, but this column doesn't exist in your environment states whose columns are: {env_state.keys()}")
+            world_state = WorldState(environment_states=env_state, opponent_states=None, personal_states=None)
             if self.batch_item_id_column is not None:
-                item = (self.batch_item_id_generator(env_state[self.batch_item_id_column]), env_state, None, None) #unique batch item id, environment_state, opponent_state, personal_state
+                item = (self.batch_item_id_generator(env_state[self.batch_item_id_column]), world_state) #unique batch item id, environment_state, opponent_state, personal_state
             else:
-                item = (idx, env_state, None, None) #unique batch item id, environment_state, opponent_state, personal_state
+                item = (idx, world_state) #unique batch item id, environment_state, opponent_state, personal_state
             dataset_processed.append(item)
         return dataset_processed
     
+    # --- Main DataManager Methods ---
+    def get_round_data(self, **kwargs) -> List[Tuple[Any, Any, Any, Any]]:
+        dataset_raw = self.data_generator(dataset_id_or_path=self.datasets['train'], subset=self.data_subset, split=kwargs.get("split", "train"), num_samples=self.num_samples['train'])
+        return self.prepare_data(dataset_raw)
+    
     def get_eval_data(self, **kwargs) -> List[Tuple[Any, Any, Any, Any]]:
         dataset_raw = self.data_generator(dataset_id_or_path=self.datasets['evaluation'], subset=self.data_subset, split=kwargs.get("split", "test"), num_samples=self.num_samples['evaluation'])
-        dataset_processed = []
-        for idx, datum in enumerate(dataset_raw): #TODO (gab): Split this into functions that return all three states and set this as default behaviour if they choose not to hijack it
-            #Fill environment state with input data about the start of the round.
-            if self.column_map['names'] is not None:
-                env_state = {key: datum[self.column_map['names'][key]] for key in self.column_map['names']}
-            elif getattr(dataset_raw, "column_names", False):
-                env_state = {key: datum[key] for key in dataset_raw.column_names}
-            else:
-                raise AttributeError("No mapping for column names were provided and generated dataset object doesn't have a \"column_names\" method for inferring desired column names.")
-            #Preprocess any columns if desired
-            if self.column_map['preprocessing'] is not None:
-                for col in self.column_map['preprocessing']:
-                    if col in env_state:
-                        env_state[col] = self.column_map['preprocessing'][col](env_state[col])
-                    else:
-                        raise ValueError(f"Received a column preprocessing function for column == {col}, but this column doesn't exist in your environment states whose columns are: {env_state.keys()}")
-            if self.batch_item_id_column is not None:
-                item = (self.batch_item_id_generator(env_state[self.batch_item_id_column]), env_state, None, None) #unique batch item id, environment_state, opponent_state, personal_state
-            else:
-                item = (idx, env_state, None, None) #unique batch item id, environment_state, opponent_state, personal_state
-            dataset_processed.append(item)
-        return dataset_processed
+        return self.prepare_data(dataset_raw)
+
     
     def prepare_input(self, 
                       inputs: Dict[Any, Dict[Any, List[Tuple[Any]]]], 
@@ -193,12 +182,12 @@ class LocalMemoryTextDataManager(DataManager):
         return actions
     
     def prepare_states(self, current_state: GameState, swarm_states: Dict[Any, Any]) -> Dict[Any, Dict[Any, List[Tuple[Any]]]]:
-        world_states = current_state.get_latest_state()
-        for agent in world_states:
-            for batch_id in world_states[agent]:
-                for node_idx, node_state in enumerate(world_states[agent][batch_id]):
-                    world_states[agent][batch_id][node_idx][0], world_states[agent][batch_id][node_idx][1], world_states[agent][batch_id][node_idx][2] = self.merge_swarm_and_node_states(node_state, swarm_states, current_state.stage, agent, batch_id)
-        return world_states
+        latest_state = current_state.get_latest_state()
+        for agent in latest_state:
+            for batch_id in latest_state[agent]:
+                for node_idx, node_state in enumerate(latest_state[agent][batch_id]):
+                    latest_state[agent][batch_id][node_idx] = self.merge_swarm_and_node_states(node_state, swarm_states, current_state.stage, agent, batch_id)
+        return latest_state
     
     # --- Required Game-Dependant Methods ---
     @abc.abstractmethod
