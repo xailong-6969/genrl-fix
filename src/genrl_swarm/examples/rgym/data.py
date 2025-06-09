@@ -227,9 +227,9 @@ class ReasoningGymDataManager(LocalMemoryTextDataManager):
                     payload_batch_id = generate_md5_hash_id(world_state['question'])
                     assert payload_batch_id == batch_id
                     if trees[agent][batch_id] is None: # we don't have a tree for this batch item, make one and append actions
-                        trees[agent][batch_id] = self.game_tree_factory(received_states)
-                        trees[agent][batch_id].append_node_actions(stage=self.stage, node_idx=0, actions=received_actions)
-                        trees[agent][batch_id][self.stage][0]["metadata"] = received_metadata
+                        trees[agent][batch_id] = current_state.game_tree_factory(received_states)
+                        trees[agent][batch_id].append_node_actions(stage=current_state.stage, node_idx=0, actions=received_actions)
+                        trees[agent][batch_id][current_state.stage][0]["metadata"] = received_metadata
                     else: # we already have this tree, and actions were appended in run_game_stage()
                         pass
         world_state = current_state.get_latest_state()
