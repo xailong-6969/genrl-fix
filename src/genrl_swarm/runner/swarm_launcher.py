@@ -7,6 +7,7 @@ from genrl_swarm.communication.communication import Communication
 from genrl_swarm.communication.hivemind.hivemind_backend import \
     HivemindBackend, HivemindRendezvouz
 
+from genrl_swarm.misc_utils.omega_gpu_resolver import gpu_model_choice_resolver # necessary for gpu_model_choice resolver in hydra config
 
 @hydra.main(version_base=None)
 def main(cfg: DictConfig):

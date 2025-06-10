@@ -404,24 +404,7 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
 
     @torch.no_grad()
     def evaluate(self, state: GameState, data_manager: DataManager, reward_manager: RewardManager):
-        self.model.eval()
-        eval_data = data_manager.get_eval_data()
-        batch = eval_data #next(iter(eval_data_loader))
-
-        completions, completion_ids = self.generate(batch, return_completion_ids=True)
-        
-        #TODO: Come back and add evaluation fxn to the reward manager
-        reward_fn = reward_manager.dispatch_reward_fn(state.round, state.stage)
-        rewards = reward_fn.evaluation(batch['prompt'], completions)
-        advantages = (rewards - rewards.mean(dim=1, keepdim=True)) / (rewards.std(dim=1, keepdim=True) + 1e-8)
-        
-        batch['completion_ids'] = completion_ids
-        batch['completion_mask'] = completion_ids != self.tokenizer.eos_token_id
-        batch['advantages'] = advantages
-        batch['old_per_token_logps'] = None
-
-        loss, metrics = self.compute_loss(batch, mode='eval', return_metrics=True)
-        self.log(metrics, game_state.round)
+        pass
     
     def save(self, save_dir: str) -> None:
         """

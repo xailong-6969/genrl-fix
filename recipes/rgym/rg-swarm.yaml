@@ -49,8 +49,11 @@ game_manager:
     _target_: genrl_swarm.examples.rgym.trainer.GRPOTrainerModule
     models:
       - _target_: transformers.AutoModelForCausalLM.from_pretrained
-        pretrained_model_name_or_path: ${oc.env:MODEL_NAME,Gensyn/Qwen2.5-0.5B-Instruct} #Qwen/Qwen3-0.6B <-11GiB
-        config: trl.trainer.GRPOConfig
+        pretrained_model_name_or_path: ${oc.env:MODEL_NAME, ${gpu_model_choice:${default_large_model_pool},${default_small_model_pool}}} 
+    config:
+      _target_: trl.trainer.GRPOConfig
+      logging_dir: ${log_dir}
+      fp16: false # set this line to true if your hardware supports fp16
     log_with: tensorboard
     log_dir: ${log_dir}
     num_generations: ${training.num_generations}
@@ -72,3 +75,11 @@ game_manager:
     org_id: ${blockchain.org_id}
     modal_proxy_url: ${blockchain.modal_proxy_url}
     
+default_large_model_pool: 
+  - nvidia/AceInstruct-1.5B
+  - dnotitia/Smoothie-Qwen3-1.7B
+  - Gensyn/Qwen2.5-1.5B-Instruct
+
+default_small_model_pool:
+  - Gensyn/Qwen2.5-0.5B-Instruct
+  - Qwen/Qwen3-0.6B
