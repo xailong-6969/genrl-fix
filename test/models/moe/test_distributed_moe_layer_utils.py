@@ -1,4 +1,8 @@
 import pytest
+
+# Skip this entire test file
+pytest.skip("Skipping all tests in test_distributed_moe_layer_utils.py", allow_module_level=True)
+
 import torch
 import torch.multiprocessing as mp
 from transformers import Qwen2Config

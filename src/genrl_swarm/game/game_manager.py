@@ -205,9 +205,7 @@ class DefaultGameManagerMixin:
             if not node._is_leaf_node(): #NOTE: For custom inheritance functions, you may want to add your own loop in here to generate several children according to whatever logic you desire
                 child = GameNode(stage=node.stage+1,
                                  node_idx=0, #Will be overwritten by the game tree if not correct
-                                 environment_states=node.environment_states,
-                                 opponent_states=node.opponent_states,
-                                 personal_states=node.personal_states,
+                                 world_state = node.world_state,
                                  actions=None
                                  )
                 children.append(child)

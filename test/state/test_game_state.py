@@ -1,7 +1,7 @@
 from unittest import TestCase
 import torch
 
-from genrl_swarm.state import GameState
+from genrl_swarm.state import GameState, WorldState
 
 
 class TestGameState(TestCase):
@@ -12,7 +12,7 @@ class TestGameState(TestCase):
 
     def test_init_game(self) -> None:
         round_data_raw = torch.randint(0, 100, (self.batch_size, 3))
-        round_data = [(i, round_data_raw[i][0],round_data_raw[i][1],round_data_raw[i][2]) for i in range(len(round_data_raw.tolist()))]
+        round_data = [(i, WorldState(round_data_raw[i][0], round_data_raw[i][1], round_data_raw[i][2])) for i in range(len(round_data_raw.tolist()))]
         self.state._init_game(round_data)
         self.assertEqual(self.state.world_state_pruners, {"environment_pruner": None, "opponent_pruner": None, "personal_pruner": None})
         self.assertEqual(self.state.tree_branching_functions, {"terminal_node_decision_function": None, "stage_inheritance_function": None})
@@ -21,9 +21,9 @@ class TestGameState(TestCase):
         for agent in self.state.trees:
             self.assertEqual(len(self.state.trees[agent]), self.batch_size)
             for batch in range(self.batch_size):
-                self.assertEqual(self.state.trees[agent][batch].metadata['root_node']['environment_states'], round_data[batch][1])
-                self.assertEqual(self.state.trees[agent][batch].metadata['root_node']['opponent_states'], round_data[batch][2])
-                self.assertEqual(self.state.trees[agent][batch].metadata['root_node']['personal_states'], round_data[batch][3])
+                self.assertEqual(self.state.trees[agent][batch].metadata['root_node'].world_state.environment_states, round_data[batch][1].environment_states)
+                self.assertEqual(self.state.trees[agent][batch].metadata['root_node'].world_state.opponent_states, round_data[batch][1].opponent_states)
+                self.assertEqual(self.state.trees[agent][batch].metadata['root_node'].world_state.personal_states, round_data[batch][1].personal_states)
     
     def test_advance_round(self) -> None:
         round_data_raw = torch.randint(0, 100, (self.batch_size, 3))
@@ -34,7 +34,7 @@ class TestGameState(TestCase):
 
     def test_get_stage_state(self) -> None:
         round_data_raw = torch.randint(0, 100, (self.batch_size, 3))
-        round_data = [(i, round_data_raw[i][0],round_data_raw[i][1],round_data_raw[i][2]) for i in range(len(round_data_raw.tolist()))]
+        round_data = [(i, WorldState(round_data_raw[i][0], round_data_raw[i][1], round_data_raw[i][2])) for i in range(len(round_data_raw.tolist()))]
         self.state.advance_round(round_data)
         states = self.state.get_stage_state(stage_num=0) #[Agents][Batch][Node Idx in Stage][World State]
         self.assertEqual(len(states), self.swarm_size)
@@ -42,10 +42,9 @@ class TestGameState(TestCase):
             self.assertEqual(len(states[agent]), self.batch_size)
             for batch in range(self.batch_size):
                 self.assertEqual(len(states[agent][batch]), 1)
-                self.assertEqual(len(states[agent][batch][0]), 3)
-                self.assertEqual(states[agent][batch][0][0], round_data[batch][1])
-                self.assertEqual(states[agent][batch][0][1], round_data[batch][2])
-                self.assertEqual(states[agent][batch][0][2], round_data[batch][3])
+                self.assertEqual(states[agent][batch][0].environment_states, round_data[batch][1].environment_states)
+                self.assertEqual(states[agent][batch][0].opponent_states, round_data[batch][1].opponent_states)
+                self.assertEqual(states[agent][batch][0].personal_states, round_data[batch][1].personal_states)
                 
     def test_get_stage_actions(self) -> None:
         round_data_raw = torch.randint(0, 100, (self.batch_size, 3))
@@ -69,10 +68,9 @@ class TestGameState(TestCase):
             self.assertEqual(len(states[agent]), self.batch_size)
             for batch in range(self.batch_size):
                 self.assertEqual(len(states[agent][batch]), 1)
-                self.assertEqual(len(states[agent][batch][0]), 3)
-                self.assertEqual(states[agent][batch][0][0], round_data[batch][1])
-                self.assertEqual(states[agent][batch][0][1], round_data[batch][2])
-                self.assertEqual(states[agent][batch][0][2], round_data[batch][3])
+                self.assertEqual(states[agent][batch][0], round_data[batch][1])
+                self.assertEqual(states[agent][batch][0], round_data[batch][1])
+                self.assertEqual(states[agent][batch][0], round_data[batch][1])
     
     def test_get_latest_actions(self) -> None:
         round_data_raw = torch.randint(0, 100, (self.batch_size, 3))
@@ -86,13 +84,13 @@ class TestGameState(TestCase):
                 self.assertEqual(len(states[agent][batch]), 1)
                 self.assertEqual(states[agent][batch][0], None)
 
-    def test_append_generation(self) -> None:
+    def test_append_actions(self) -> None:
         round_data_raw = torch.randint(0, 100, (self.batch_size, 3))
         round_data = [(i, round_data_raw[i][0],round_data_raw[i][1],round_data_raw[i][2]) for i in range(len(round_data_raw.tolist()))]
         self.state.advance_round(round_data)
         actions = ['generation', 'being', 'appended']
         agent_actions = {agent:[[actions for node in self.state.trees[agent][batch][0]] for batch in range(self.batch_size)] for agent in self.state.trees}
-        self.state.append_generation(agent_actions=agent_actions)
+        self.state.append_actions(agent_actions=agent_actions)
         states = self.state.get_stage_actions(stage_num=0)
         for agent in self.state.trees:
             for batch in range(self.batch_size):

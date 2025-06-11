@@ -9,14 +9,16 @@ training:
   seed: 42
 
 blockchain:
-  initial_peers:
-    - '/ip4/38.101.215.14/tcp/31111/p2p/QmQ2gEXoPJg6iMBSUFWGzAabS2VhnzuS782Y637hGjfsRJ'
-    - '/ip4/38.101.215.14/tcp/31222/p2p/QmWhiaLrx3HRZfgXc2i7KW5nMUNK7P9tRc71yFJdGEZKkC'
   alchemy_url: "https://gensyn-testnet.g.alchemy.com/public"
   contract_address: ${oc.env:SWARM_CONTRACT,null} # This is set by modal-login in run_rl_swarm.sh
   org_id: ${oc.env:ORG_ID,null} # This is set by modal-login in run_rl_swarm.sh
   mainnet_chain_id: 685685 # currently unused, will be used with WalletSwarmCoordinator
   modal_proxy_url: "http://localhost:3000/api/"
+
+communications:
+  initial_peers:
+    - '/ip4/38.101.215.14/tcp/31111/p2p/QmQ2gEXoPJg6iMBSUFWGzAabS2VhnzuS782Y637hGjfsRJ'
+    - '/ip4/38.101.215.14/tcp/31222/p2p/QmWhiaLrx3HRZfgXc2i7KW5nMUNK7P9tRc71yFJdGEZKkC'
 
 hydra:
   run:
@@ -66,7 +68,7 @@ game_manager:
     seed: ${training.seed}
   communication:
     _target_: genrl_swarm.communication.hivemind.hivemind_backend.HivemindBackend
-    initial_peers: ${blockchain.initial_peers}
+    initial_peers: ${communications.initial_peers}
     identity_path: ${oc.env:IDENTITY_PATH,null}
   coordinator:
     _target_: genrl_swarm.blockchain.coordinator.ModalSwarmCoordinator

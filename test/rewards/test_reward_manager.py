@@ -18,7 +18,7 @@ class TestRewardManager(TestCase):
         self.rm.set_round_stage(3, 2)
         self.assertEqual(self.rm.round, 3)
         self.assertEqual(self.rm.stage, 2)
-        self.assertEqual(self.rm.rewards, None)
+        self.assertEqual(self.rm.rewards, [])
 
     def test_set_round_stage(self):
         self.rm.set_round_stage(11, 12)
@@ -30,7 +30,7 @@ class TestRewardManager(TestCase):
         self.rm.reset()
         self.assertEqual(self.rm.round, 3)
         self.assertEqual(self.rm.stage, 0)
-        self.assertEqual(self.rm.rewards, None)
+        self.assertEqual(self.rm.rewards, [])
         
     def test_dispatch_reward_fn(self):
         round_store = RoundRewardFnStore(3, [lambda x: x + 1, lambda x: x + 2, lambda x: x + 3])
@@ -46,5 +46,5 @@ class TestRewardManager(TestCase):
         rm = DefaultRewardManager(reward_store)
         reward = rm(0, 1, 10)
         self.assertEqual(reward, 12)
-        self.assertEqual(rm.rewards, 12)
+        self.assertEqual(rm.rewards, [12])
         

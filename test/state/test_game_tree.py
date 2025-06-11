@@ -1,11 +1,11 @@
 from unittest import TestCase
 
-from genrl_swarm.state import GameNode, DefaultGameTree
+from genrl_swarm.state import GameNode, DefaultGameTree, WorldState
 
 class TestGameTree(TestCase):
     def setUp(self) -> None:
         self.node = GameNode(0, 0)
-        self.gt = DefaultGameTree(root_states=('puppies', 'und', 'kittens'))
+        self.gt = DefaultGameTree(root_states=WorldState(environment_states='puppies', opponent_states='und', personal_states='kittens'))
 
     def test_node(self) -> None:
         #Check that default child and parents are empty lists 
@@ -37,21 +37,21 @@ class TestGameTree(TestCase):
         self.assertTrue(self.node._is_leaf_node())
 
     def test_append_node_states(self) -> None:
-        example_states = ('Example env state new', 'Example op state new', ['e','x','a','m','p','l','e',3])
+        example_states = WorldState(environment_states='Example env state new', opponent_states='Example op state new', personal_states=['e','x','a','m','p','l','e',3])
         #No pruner
         pruning_functions = {"environment_pruner": None, "opponent_pruner": None, "personal_pruner": None}
         self.gt.append_node_states(stage=0, node_idx=0, states=example_states, pruning_functions=pruning_functions)
-        self.assertEqual(self.gt[0][0]["environment_states"], example_states[0])
-        self.assertEqual(self.gt[0][0]["opponent_states"], example_states[1])
-        self.assertEqual(self.gt[0][0]["personal_states"], example_states[2])
+        self.assertEqual(self.gt[0][0].world_state.environment_states, example_states.environment_states)
+        self.assertEqual(self.gt[0][0].world_state.opponent_states, example_states.opponent_states)
+        self.assertEqual(self.gt[0][0].world_state.personal_states, example_states.personal_states)
         #With pruner
         def toy_pruner(x):
             return x[0]
         pruning_functions = {"environment_pruner": toy_pruner, "opponent_pruner": toy_pruner, "personal_pruner": toy_pruner}
         self.gt.append_node_states(stage=0, node_idx=0, states=example_states, pruning_functions=pruning_functions)
-        self.assertEqual(self.gt[0][0]["environment_states"], toy_pruner(example_states[0]))
-        self.assertEqual(self.gt[0][0]["opponent_states"], toy_pruner(example_states[1]))
-        self.assertEqual(self.gt[0][0]["personal_states"], toy_pruner(example_states[2]))
+        self.assertEqual(self.gt[0][0].world_state.environment_states, toy_pruner(example_states.environment_states))
+        self.assertEqual(self.gt[0][0].world_state.opponent_states, toy_pruner(example_states.opponent_states))
+        self.assertEqual(self.gt[0][0].world_state.personal_states, toy_pruner(example_states.personal_states))
 
     def test_append_node_actions(self) -> None:
         example_actions = ['Action 1', 'Action 2', 3]
@@ -70,9 +70,9 @@ class TestGameTree(TestCase):
         self.assertTrue(self.gt.metadata['num_nodes'] == 4)
         for child in self.gt[0][0]["children"]:
             self.assertEqual(child["stage"], self.gt.metadata['max_depth'])
-            self.assertEqual(child["environment_states"], self.gt[0][0]["environment_states"])
-            self.assertEqual(child["opponent_states"], self.gt[0][0]["opponent_states"])
-            self.assertTrue(child["personal_states"] in self.gt[0][0]["actions"])
+            self.assertEqual(child.world_state.environment_states, self.gt[0][0].world_state.environment_states)
+            self.assertEqual(child.world_state.opponent_states, self.gt[0][0].world_state.opponent_states)
+            self.assertTrue(child.world_state.personal_states in self.gt[0][0].world_state.personal_states)
         #With stage_inheritance_function
         def toy_inheritance(x):
             stage_nodes = []
@@ -80,7 +80,13 @@ class TestGameTree(TestCase):
                 if node._is_leaf_node():
                     stage_nodes.append([])
                 else:
-                    stage_nodes.append([GameNode(stage=0, node_idx=0, environment_states='tuna', opponent_states='fish', personal_states='cans', actions=['have', 1, 'fish'])])
+                    stage_nodes.append([GameNode(stage=0, 
+                                                node_idx=0, 
+                                                world_state=WorldState(
+                                                    environment_states='tuna', 
+                                                    opponent_states='fish', 
+                                                    personal_states='cans'), 
+                                                actions=['have', 1, 'fish'])])
             return stage_nodes
         example_branching_fxns = {"terminal_node_decision_function": None, "stage_inheritance_function": toy_inheritance}
         self.gt.commit_actions_from_stage(stage=1,tree_branching_functions=example_branching_fxns)
@@ -89,9 +95,9 @@ class TestGameTree(TestCase):
         self.assertTrue(self.gt.metadata['num_nodes'] == 7)
         for child in self.gt[1][0]["children"]:
             self.assertEqual(child["stage"], self.gt.metadata['max_depth'])
-            self.assertEqual(child["environment_states"], 'tuna')
-            self.assertEqual(child["opponent_states"], 'fish')
-            self.assertEqual(child["personal_states"], 'cans')
+            self.assertEqual(child.world_state.environment_states, 'tuna')
+            self.assertEqual(child.world_state.opponent_states, 'fish')
+            self.assertEqual(child.world_state.personal_states, 'cans')
         #With terminal_node_decision_function
         example_branching_fxns = {"terminal_node_decision_function": None, "stage_inheritance_function": None}
         self.gt.commit_actions_from_stage(stage=2,tree_branching_functions=example_branching_fxns)
@@ -99,7 +105,7 @@ class TestGameTree(TestCase):
         def toy_terminal_decider(x):
             terminal_nodes = []
             for node in x:
-                if isinstance(node['personal_states'], int):
+                if isinstance(node.actions, int):
                     terminal_nodes.append(node)
             return terminal_nodes
         example_branching_fxns = {"terminal_node_decision_function": toy_terminal_decider, "stage_inheritance_function": toy_inheritance}
