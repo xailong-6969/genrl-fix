@@ -58,6 +58,9 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         self.global_step = 0
         self.num_generations = kwargs.get("num_generations", 2)
         assert self.num_generations > 1, f"For GRPO training, number of generations must be > 1, got {self.num_generations}"
+        self.epsilon = kwargs.get("epsilon", 0.2)
+        self.epsilon_high = kwargs.get("epsilon_high", None)
+        self.beta = kwargs.get("beta", 0.0)
         
         # Initialize core components
         self._initialize_model()
@@ -70,8 +73,8 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
     
     def _initialize_model(self):
         """Initialize the model and reference model."""
-        # Set up model hyperparameters
-        self.beta = self.args.beta
+        # # Set up model hyperparameters
+        # self.beta = self.args.beta
         
         # Reference model setup
         if self.beta == 0.0:
@@ -269,7 +272,7 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         
         # Calculate ratios and loss terms
         coef_1 = torch.exp(per_token_logps - old_per_token_logps)
-        coef_2 = torch.clamp(coef_1, 1 - self.args.epsilon, 1 + self.args.epsilon_high if self.args.epsilon_high is not None else self.args.epsilon)
+        coef_2 = torch.clamp(coef_1, 1 - self.epsilon, 1 + self.epsilon_high if self.epsilon_high is not None else self.epsilon)
         advantages =  advantages.unsqueeze(dim=-1)
 
         per_token_loss1 = coef_1 * advantages

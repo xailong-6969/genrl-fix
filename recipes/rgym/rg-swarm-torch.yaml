@@ -1,0 +1,49 @@
+log_dir: /home/gensyn/shared/gab/genrl_testing
+
+training:
+  max_round: 500
+  max_stage: 1
+  prune_K: 5
+  num_generations: 3
+  seed: 561
+
+game_manager:
+  _target_: genrl_swarm.game.game_manager.BaseGameManager
+  max_stage: ${training.max_stage}
+  max_round: ${training.max_round}
+  prune_K: ${training.prune_K}
+  game_state: 
+    _target_: genrl_swarm.state.GameState
+    round: 0
+    stage: 0
+  reward_manager:
+    _target_: genrl_swarm.rewards.DefaultRewardManager
+    reward_fn_store:
+      _target_: genrl_swarm.rewards.reward_store.RewardFnStore
+      max_rounds: ${training.max_round}
+      reward_fn_stores:
+        - _target_: genrl_swarm.rewards.reward_store.RoundRewardFnStore
+          num_stages: ${training.max_stage}
+          reward_fns:
+            - _target_: genrl_swarm.examples.rgym.rewards.RGRewards
+  trainer:
+    _target_: genrl_swarm.examples.rgym.trainer.GRPOTrainerModule
+    models:
+      - _target_: transformers.AutoModelForCausalLM.from_pretrained
+        pretrained_model_name_or_path: /home/gensyn/shared/models/qwen-2.5-0.5B-Instruct
+        config: trl.trainer.GRPOConfig
+    epsilon: 0.2
+    epsilon_high: 0.28
+    beta: 0.0
+    num_generations: ${training.num_generations}
+    log_with: tensorboard
+    log_dir: ${log_dir}
+  data_manager:
+    _target_: genrl_swarm.examples.rgym.data.ReasoningGymDataManager
+    yaml_config_path: "src/genrl_swarm/examples/rgym/datasets.yaml"
+    num_train_samples: 2
+    num_evaluation_samples: 0
+    system_prompt_id: 'default'
+    seed: ${training.seed}
+    num_transplant_trees: 5
+  run_mode: "train"

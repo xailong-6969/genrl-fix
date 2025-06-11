@@ -27,6 +27,7 @@ class ReasoningGymDataManager(LocalMemoryTextDataManager):
         batch_item_id_column: Optional[str] = 'question',
         system_prompt_id: str = 'default',
         chunk_size: int = 500,
+        **kwargs
     ):
         """Initialize the ReasoningGymDataManager.
         
@@ -56,6 +57,7 @@ class ReasoningGymDataManager(LocalMemoryTextDataManager):
         self.eval_split_ratio = eval_split_ratio
         self.chunk_size = chunk_size
         self.system_prompt = SYSTEM_PROMPTS.get(system_prompt_id, SYSTEM_PROMPTS['default'])
+        self.num_transplant_trees = kwargs.get("num_transplant_trees", 1)
         
         try:
             self.config = CompositeConfig.from_yaml(yaml_config_path)
@@ -215,22 +217,39 @@ class ReasoningGymDataManager(LocalMemoryTextDataManager):
     
     def prepare_states(self, current_state: GameState, swarm_states: Dict[Any, Any]) -> Dict[Any, Dict[Any, List[Tuple[Any]]]]:
         trees = current_state.trees
-        for agent in swarm_states:
+        transplants = self.transplant_trees(current_state, swarm_states, self.num_transplant_trees)
+        for pair in transplants:
+            agent, batch_id = pair
             if agent not in trees:
                 trees[agent] = {}
-            for batch_id in swarm_states[agent]:
-                if batch_id not in trees[agent]:
-                    trees[agent][batch_id] = None
-                for payload in swarm_states[agent][batch_id]:
-                    received_states, received_actions, received_metadata = payload["world_state"], payload["actions"], payload["metadata"]
-                    world_state = received_states.environment_states
-                    payload_batch_id = generate_md5_hash_id(world_state['question'])
-                    assert payload_batch_id == batch_id
-                    if trees[agent][batch_id] is None: # we don't have a tree for this batch item, make one and append actions
-                        trees[agent][batch_id] = current_state.game_tree_factory(received_states)
-                        trees[agent][batch_id].append_node_actions(stage=current_state.stage, node_idx=0, actions=received_actions)
-                        trees[agent][batch_id][current_state.stage][0]["metadata"] = received_metadata
-                    else: # we already have this tree, and actions were appended in run_game_stage()
-                        pass
+            if batch_id not in trees[agent]:
+                trees[agent][batch_id] = None
+            payload = transplants[pair]
+            received_states, received_actions, received_metadata = payload["world_state"], payload["actions"], payload["metadata"]
+            world_state = received_states.environment_states
+            payload_batch_id = generate_md5_hash_id(world_state['question'])
+            assert payload_batch_id == batch_id
+            if trees[agent][batch_id] is None: # we don't have a tree for this batch item, make one and append actions
+                trees[agent][batch_id] = current_state.game_tree_factory(received_states)
+                trees[agent][batch_id].append_node_actions(stage=current_state.stage, node_idx=0, actions=received_actions)
+                trees[agent][batch_id][current_state.stage][0]["metadata"] = received_metadata
+            else: # we already have this tree, and actions were appended in run_game_stage()
+                pass
         world_state = current_state.get_latest_state()
         return world_state
+
+    def transplant_trees(self, 
+                         current_state: GameState, 
+                         swarm_states: Dict[Any, Any], 
+                         num_transplants: int
+                         ) -> Dict[Tuple[Any], Any]:
+        #Loop through and return a set of num_transplant transplants to add
+        transplants = {}
+        for agent in swarm_states:
+            if agent not in current_state.trees:
+                for batch_id in swarm_states[agent]:
+                    for payload in swarm_states[agent][batch_id]:
+                        transplants[(agent, batch_id)] = payload
+        hashed_trees = [generate_md5_hash_id(str(key[1])) for key in transplants]
+        deterministic_scrambled_trees = [key for _, key in sorted(zip(hashed_trees, transplants))]
+        return {key: transplants[key] for key in deterministic_scrambled_trees[:num_transplants]}
