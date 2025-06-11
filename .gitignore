@@ -175,3 +175,6 @@ weights/
 # Data
 # data/
 # datasets/
+
+/tmp
+/bazel-*
