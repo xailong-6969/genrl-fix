@@ -13,7 +13,7 @@ def get_gpu_vram():
 def gpu_model_choice_resolver(large_model_pool, small_model_pool):
     """Selects a model from the large or small pool based on VRAM."""
     vram = get_gpu_vram()
-    if vram >= 30:
+    if vram >= 40:
         model_pool = large_model_pool
     else:
         model_pool = small_model_pool
