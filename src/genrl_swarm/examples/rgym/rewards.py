@@ -11,8 +11,8 @@ class RGRewards:
         if answer is None or not answer:
             return [0.0] * len(completions)
         
-        formatting = format_reward(completions)
-        correctness = accuracy_reward(completions, answer, metadata)
+        formatting = format_reward(completions, weight=0.2)
+        correctness = accuracy_reward(completions, answer, metadata, weight=1.0)
 
         cumulative = [sum(tup) for tup in zip(formatting, correctness)]
         return cumulative
@@ -26,4 +26,6 @@ class RGRewards:
                 rewards[agent][batch_id] = []
                 for node_idx, _ in enumerate(completions[agent][batch_id]):
                     rewards[agent][batch_id].append(self.reward_fn(completions[agent][batch_id][node_idx], answers[agent][batch_id][node_idx], metadata[agent][batch_id][node_idx]))
+                    if game_state.round % 100 == 0:
+                        print(f"!!!!Examples!!!!\nCompletions -> {completions}\n\nAnswers -> {answers}\n\nMetadata-> {metadata}\n\nRewards -> {rewards[agent][batch_id][-1]}")
         return rewards

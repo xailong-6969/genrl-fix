@@ -16,14 +16,14 @@ def score_answer(predicted_answer: str, oracle_answer: str, metadata: Optional[D
     # Default to decimal reward computation from reasoning_gym.utils
     return compute_decimal_reward(predicted_answer, oracle_answer)
 
-def format_reward(completions):
+def format_reward(completions, weight=1.0):
     regex = r"^<think>([^<]*(?:<(?!/?think>)[^<]*)*)<\/think>\n<answer>([\s\S]*?)<\/answer>$"
     matches = [re.match(regex, completion, flags=re.DOTALL) for completion in completions]
-    return [1.0 if match else 0.0 for match in matches]
+    return [weight if match else 0.0 for match in matches]
 
-def accuracy_reward(completions, ground_truth, metadata):
+def accuracy_reward(completions, ground_truth, metadata, weight=1.0):
     predictions = [extract_answer(completion) for completion in completions]
-    return [score_answer(pred, ground_truth, metadata=metadata) for pred in predictions]
+    return [weight*score_answer(pred, ground_truth, metadata=metadata) for pred in predictions]
 
 def get_completions(game_state: GameState, stage: int) -> Dict[Any, Dict[Any, List[Any]]]:
     #Get completions per agent and batch item from corresponding set of actions 
