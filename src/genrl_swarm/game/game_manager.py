@@ -319,10 +319,10 @@ class SwarmGameManager(BaseGameManager, DefaultGameManagerMixin):
         self.hf_token = hf_token
         if self.hf_token not in [None, "None"]:
             username = whoami()["name"]
-            model_name = self.trainer.trainer.model.config.name_or_path.split('/')[-1] 
+            model_name = self.trainer.model.config.name_or_path.split('/')[-1] 
             model_name += '-Gensyn-Swarm'
             model_name += f"-{self.animal_name}"
-            self.trainer.trainer.args.hub_model_id = f"{username}/{model_name}"
+            self.trainer.args.hub_model_id = f"{username}/{model_name}"
             self.trainer.args.push_to_hub = True
             self.trainer.args.hub_token = self.hf_token
             self.hf_push_frequency = hf_push_frequency
@@ -364,10 +364,7 @@ class SwarmGameManager(BaseGameManager, DefaultGameManagerMixin):
         self._save_to_hf()
 
         # Block until swarm round advances
-        if self.communication.bootstrap:
-            self.coordinator_block()
-        else:
-            self.agent_block()
+        self.agent_block()
 
     def _hook_after_game(self):
         self._save_to_hf()
@@ -376,7 +373,14 @@ class SwarmGameManager(BaseGameManager, DefaultGameManagerMixin):
         if self.hf_token not in [None, "None"] and self.state.round % self.hf_push_frequency == 0:
             get_logger().info(f"pushing model to huggingface")
             try:
-                self.trainer.trainer.push_to_hub(
+                repo_id = self.trainer.args.hub_model_id
+                if repo_id is None:
+                    repo_id = Path(self.trainer.args.output_dir).name
+                
+                self.trainer.model.push_to_hub(
+                    repo_id=repo_id,
+                    token=self.hf_token,
+                    commit_message=f"rl-swarm: round {self.state.round}, agent {self.animal_name}",
                     tags=[
                         "rl-swarm",
                         "genrl-swarm",
@@ -389,22 +393,6 @@ class SwarmGameManager(BaseGameManager, DefaultGameManagerMixin):
                 get_logger().exception(
                     "Failed to push model to the Hugging Face Hub. When you conclude training please try manually pushing it yourself using the instructions here: https://huggingface.co/docs/hub/en/models-uploading"
                 , stack_info=True)
-
-    def coordinator_block(self):
-        round_num = 0
-        start_time = time.monotonic()
-        if (
-            round_num < self.max_round
-            and time.monotonic() - start_time < self.train_timeout
-        ):
-            get_logger().info(f"🤖 Starting new round: {round_num}")
-
-            _ = self.communication.dht.get_visible_maddrs(latest=True)
-            round_num += 1
-            return
-        else:
-            get_logger().info("Training Complete!")
-            sys.exit(0)
 
     def agent_block(
         self, check_interval=5.0, log_timeout=10.0, max_check_interval=60.0 * 15

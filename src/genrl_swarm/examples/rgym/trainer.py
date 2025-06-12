@@ -11,7 +11,6 @@ from transformers import (
     GenerationConfig,
     Trainer,
 )
-from transformers.utils import is_sagemaker_mp_enabled, is_accelerate_available
 
 from genrl_swarm.trainer import TrainerModule
 from genrl_swarm.rewards import RewardManager
@@ -22,8 +21,6 @@ from trl.trainer.grpo_config import GRPOConfig
 from trl.models import create_reference_model
 from trl.data_utils import apply_chat_template
 
-if is_accelerate_available():
-    from accelerate.utils import DistributedType
 
 class GRPOTrainerModule(TrainerModule, LoggerMixin):
     """
@@ -48,7 +45,8 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         # Configuration parameters
         config = kwargs.get("config", None)
         self.args = config if isinstance(config, GRPOConfig) else GRPOConfig(config) if config else GRPOConfig()
-        
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
+
         # Tokenizers
         self.processing_class = kwargs.get("processing_class", None)
         
@@ -62,20 +60,26 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         self.epsilon_high = kwargs.get("epsilon_high", None)
         self.beta = kwargs.get("beta", 0.0)
         
+        if torch.cuda.is_available():
+            self.device = torch.device("cuda")
+        elif torch.backends.mps.is_available():
+            self.device = torch.device("mps")
+        else:
+            self.device = torch.device("cpu")
+        
         # Initialize core components
         self._initialize_model()
         self._initialize_tokenizers()
         self._initialize_metrics()
         self._initialize_generation_config()
-        self._initialize_trainer()
         self.init_tracker(self.save_dir, log_with=kwargs.get("log_with", None))
-
     
     def _initialize_model(self):
         """Initialize the model and reference model."""
         # # Set up model hyperparameters
         # self.beta = self.args.beta
-        
+        self.model = self.model.to(self.device)
+
         # Reference model setup
         if self.beta == 0.0:
             self.ref_model = None
@@ -109,17 +113,7 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
             min_p=self.args.min_p,
             repetition_penalty=self.args.repetition_penalty
         )
-
-    def _initialize_trainer(self):
-        self.trainer = Trainer(
-            model=self.model,
-            args=self.args,
-            processing_class=self.processing_class,
-            callbacks=self.callbacks,
-            optimizers=(torch.optim.Adam(self.model.parameters(), lr=self.args.learning_rate), None)
-        )
-        self.trainer.compute_loss = self.compute_loss
-
+        
     def _process_inputs(self, inputs, with_template=True, for_training=False):
         if hasattr(inputs, 'to_dict'):
             inputs = [dict(inputs[i]) for i in range(len(inputs))]
@@ -349,44 +343,18 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
             advantages = (rewards - rewards.mean(dim=1, keepdim=True)) 
             if rewards.shape[1] > 1:
                 advantages /= (rewards.std(dim=1, keepdim=True) + 1e-8)
-        advantages = torch.flatten(advantages)
+        advantages = torch.flatten(advantages).to(self.model.device)
         
         model_inputs["advantages"] = advantages.squeeze(dim=-1)
         model_inputs["old_per_token_logps"] = None
 
-        do_sync_step = global_step % self.args.gradient_accumulation_steps == 0
-        self.trainer.accelerator.gradient_state._set_sync_gradients(do_sync_step)
-        loss = self.trainer.training_step(self.model, model_inputs)
+        with torch.amp.autocast(device_type="cuda", enabled=self.args.fp16):
+            loss = self.compute_loss(self.model, model_inputs)
         
-        if do_sync_step:
-            # Since we perform prefetching, we need to manually set sync_gradients to True
-            self.trainer.accelerator.gradient_state._set_sync_gradients(True)
-
-            # Gradient clipping
-            if self.args.max_grad_norm is not None and self.args.max_grad_norm > 0:
-                if is_sagemaker_mp_enabled() and self.args.fp16:
-                    _grad_norm = self.trainer.optimizer.clip_master_grads(self.args.max_grad_norm)
-                elif self.trainer.use_apex:
-                    # Revert to normal clipping otherwise, handling Apex or full precision
-                    _grad_norm = nn.utils.clip_grad_norm_(
-                        amp.master_params(self.trainer.optimizer),
-                        self.args.max_grad_norm,
-                    )
-                else:
-                    _grad_norm = self.trainer.accelerator.clip_grad_norm_(
-                        self.model.parameters(),
-                        self.args.max_grad_norm,
-                    )
-            
-            self.trainer.optimizer.step()
-
-            if not self.trainer.accelerator.optimizer_step_was_skipped:
-                # Delay optimizer scheduling until metrics are generated
-                if self.trainer.lr_scheduler is not None and not isinstance(self.trainer.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
-                    self.trainer.lr_scheduler.step()
-
-            self.model.zero_grad()
-
+        loss.backward()
+        self.optimizer.step()
+        self.model.zero_grad()
+      
         metrics = {'train/loss': loss.cpu().mean().item()} 
         metrics.update({'train/rewards': rewards.cpu().mean().item()})
         self.log(metrics, global_step)
