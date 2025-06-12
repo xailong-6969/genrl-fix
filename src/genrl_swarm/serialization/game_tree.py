@@ -1,4 +1,5 @@
 import sys
+import struct # Added for float serialization
 from types import NoneType
 
 from typing import Any, Dict, List, Tuple, Type
@@ -11,10 +12,11 @@ class ObjType:
     DICT = 2
     STRING = 3
     INTEGER = 4
-    BOOLEAN = 5
-    PAYLOAD = 6
-    WORLD_STATE = 7
-    NONE = 8
+    FLOAT = 5
+    BOOLEAN = 6
+    PAYLOAD = 7
+    WORLD_STATE = 8
+    NONE = 9
 
 
 class Serializer:
@@ -67,6 +69,13 @@ def int_from_bytes(b: bytes, i: int) -> Tuple[int, int]:
     value = int.from_bytes(b[i : (i + n_bytes)], byteorder="big", signed=True)
     return value, i + n_bytes
 
+@Serializer.register_deserializer(ObjType.FLOAT)
+def float_from_bytes(b: bytes, i: int) -> Tuple[float, int]:
+    n_bytes = int.from_bytes(b[i : (i + 8)], byteorder="big", signed=False)
+    i += 8
+    value_tuple = struct.unpack('>d', b[i : (i + n_bytes)])
+    value = value_tuple[0] # struct.unpack returns a tuple
+    return value, i + n_bytes
 
 @Serializer.register_deserializer(ObjType.STRING)
 def string_from_bytes(b: bytes, i: int) -> Tuple[str, int]:
@@ -154,6 +163,14 @@ def int_to_bytes(obj: int) -> bytes:
     int_bytes = obj.to_bytes(length=byte_length, byteorder="big", signed=True)
     size_header = byte_length.to_bytes(length=8, byteorder="big", signed=False)
     return type_bytes + size_header + int_bytes
+
+@Serializer.register_serializer(float)
+def float_to_bytes(obj: float) -> bytes:
+    type_bytes = ObjType.FLOAT.to_bytes(length=8, byteorder="big", signed=False)
+    packed_float_bytes = struct.pack('>d', obj)
+    byte_length = len(packed_float_bytes) # This will be 8 for '>d'
+    size_header = byte_length.to_bytes(length=8, byteorder="big", signed=False)
+    return type_bytes + size_header + packed_float_bytes
 
 @Serializer.register_serializer(str)
 def string_to_bytes(obj: str) -> bytes:
