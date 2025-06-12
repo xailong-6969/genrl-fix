@@ -26,8 +26,11 @@ def get_system_info():
     lines.append(f"  Physical cores: {psutil.cpu_count(logical=False)}")
     lines.append(f"  Total cores: {psutil.cpu_count(logical=True)}")
     cpu_freq = psutil.cpu_freq()
-    lines.append(f"  Max Frequency: {cpu_freq.max:.2f} Mhz")
-    lines.append(f"  Current Frequency: {cpu_freq.current:.2f} Mhz")
+
+    # Might not be available in some environments ie Docker for Mac.
+    if cpu_freq:
+        lines.append(f"  Max Frequency: {cpu_freq.max:.2f} Mhz")
+        lines.append(f"  Current Frequency: {cpu_freq.current:.2f} Mhz")
 
     lines.append("\nMemory Information:")
     vm = psutil.virtual_memory()
