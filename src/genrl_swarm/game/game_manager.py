@@ -275,6 +275,7 @@ class SwarmGameManager(BaseGameManager, DefaultGameManagerMixin):
                  hf_token: str | None = None,
                  hf_push_frequency: int = 20,
                  submit_frequency: int = 3,
+                 **kwargs
                  ):
 
         super().__init__(
@@ -330,7 +331,7 @@ class SwarmGameManager(BaseGameManager, DefaultGameManagerMixin):
             login(self.hf_token)
 
         get_logger().info(f"🐱 Hello 🐈 [{get_name_from_peer_id(self.peer_id)}] 🦮 [{self.peer_id}]!")
-        get_logger().info(f"bootnodes: {self.coordinator.get_bootnodes()}")
+        get_logger().info(f"bootnodes: {kwargs.get('bootnodes', [])}")
         get_logger().info(f"Using Model: {self.trainer.model.config.name_or_path}")
 
         with open(os.path.join(log_dir, f"system_info.txt"), "w") as f:

@@ -7,6 +7,7 @@ training:
   hf_push_frequency: 1
   num_generations: 2
   seed: 42
+  fp16: false # set this line to true if your hardware supports fp16
 
 blockchain:
   alchemy_url: "https://gensyn-testnet.g.alchemy.com/public"
@@ -17,8 +18,9 @@ blockchain:
 
 communications:
   initial_peers:
-    - '/ip4/38.101.215.14/tcp/31111/p2p/QmQ2gEXoPJg6iMBSUFWGzAabS2VhnzuS782Y637hGjfsRJ'
-    - '/ip4/38.101.215.14/tcp/31222/p2p/QmWhiaLrx3HRZfgXc2i7KW5nMUNK7P9tRc71yFJdGEZKkC'
+    - '/ip4/38.101.215.15/tcp/30011/p2p/QmQ2gEXoPJg6iMBSUFWGzAabS2VhnzuS782Y637hGjfsRJ'
+    - '/ip4/38.101.215.15/tcp/30012/p2p/QmWhiaLrx3HRZfgXc2i7KW5nMUNK7P9tRc71yFJdGEZKkC'
+    - '/ip4/38.101.215.15/tcp/30013/p2p/QmQa1SCfYTxx7RvU7qJJRo79Zm1RAwPpkeLueDVJuBBmFp'
 
 hydra:
   run:
@@ -33,6 +35,7 @@ game_manager:
   hf_token: ${oc.env:HUGGINGFACE_ACCESS_TOKEN,null}
   hf_push_frequency: ${training.hf_push_frequency}
   run_mode: "train"
+  bootnodes: ${communications.initial_peers}
   game_state: 
     _target_: genrl_swarm.state.game_state.GameState
     round: 0
@@ -55,7 +58,7 @@ game_manager:
     config:
       _target_: trl.trainer.GRPOConfig
       logging_dir: ${log_dir}
-      fp16: false # set this line to true if your hardware supports fp16
+      fp16: ${training.fp16}
     log_with: tensorboard
     log_dir: ${log_dir}
     num_generations: ${training.num_generations}

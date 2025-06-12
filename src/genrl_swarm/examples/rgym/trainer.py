@@ -377,17 +377,6 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
                         self.model.parameters(),
                         self.args.max_grad_norm,
                     )
-
-                if (
-                    is_accelerate_available()
-                    and self.trainer.accelerator.distributed_type == DistributedType.DEEPSPEED
-                ):
-                    grad_norm = self.model.get_global_grad_norm()
-                    # In some cases the grad norm may not return a float
-                    if hasattr(grad_norm, "item"):
-                        grad_norm = grad_norm.item()
-                else:
-                    grad_norm = _grad_norm
             
             self.trainer.optimizer.step()
 
@@ -397,6 +386,7 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
                     self.trainer.lr_scheduler.step()
 
             self.model.zero_grad()
+
         metrics = {'train/loss': loss.cpu().mean().item()} 
         metrics.update({'train/rewards': rewards.cpu().mean().item()})
         self.log(metrics, global_step)
