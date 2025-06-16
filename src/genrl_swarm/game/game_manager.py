@@ -355,7 +355,8 @@ class SwarmGameManager(BaseGameManager, DefaultGameManagerMixin):
         if self.state.round % self.submit_frequency == 0:
             rewards_by_agent = self._get_total_rewards_by_agent()
             my_rewards = rewards_by_agent[self.peer_id]
-            self.coordinator.submit_reward(self.state.round, self.state.stage, int(my_rewards), self.peer_id)
+            my_rewards = (my_rewards + 1) * (my_rewards > 0) + my_rewards * (my_rewards <= 0)
+            self.coordinator.submit_reward(self.state.round, 0, int(my_rewards), self.peer_id)
  
             max_agent, max_rewards = max(rewards_by_agent.items(), key=lambda x: x[1])
             self.coordinator.submit_winners(self.state.round, [max_agent], self.peer_id)
