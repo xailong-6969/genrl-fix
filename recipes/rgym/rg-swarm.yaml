@@ -22,6 +22,9 @@ communications:
     - '/ip4/38.101.215.15/tcp/30012/p2p/QmWhiaLrx3HRZfgXc2i7KW5nMUNK7P9tRc71yFJdGEZKkC'
     - '/ip4/38.101.215.15/tcp/30013/p2p/QmQa1SCfYTxx7RvU7qJJRo79Zm1RAwPpkeLueDVJuBBmFp'
 
+eval:
+  judge_base_url: https://swarm-judge-102957787771.us-east1.run.app
+
 hydra:
   run:
     dir: ${log_dir}
@@ -34,7 +37,7 @@ game_manager:
   log_dir: ${log_dir}
   hf_token: ${oc.env:HUGGINGFACE_ACCESS_TOKEN,null}
   hf_push_frequency: ${training.hf_push_frequency}
-  run_mode: "train"
+  run_mode: "train_and_evaluate"
   bootnodes: ${communications.initial_peers}
   game_state: 
     _target_: genrl_swarm.state.game_state.GameState
@@ -62,6 +65,7 @@ game_manager:
     log_with: tensorboard
     log_dir: ${log_dir}
     num_generations: ${training.num_generations}
+    judge_base_url: ${eval.judge_base_url}
   data_manager:
     _target_: genrl_swarm.examples.rgym.data.ReasoningGymDataManager
     yaml_config_path: "genrl-swarm/src/genrl_swarm/examples/rgym/datasets.yaml"

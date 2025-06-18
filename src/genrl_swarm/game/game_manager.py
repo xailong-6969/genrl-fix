@@ -296,6 +296,7 @@ class SwarmGameManager(BaseGameManager, DefaultGameManagerMixin):
 
         #Logging Setup
         self.peer_id = self.communication.get_id()
+        self.state.peer_id = self.peer_id
         self.animal_name = get_name_from_peer_id(self.peer_id, True)
         format_msg = f"[{self.animal_name}] %(asctime)s %(levelname)s: %(message)s"
         logging.basicConfig(level=logging.INFO, format=format_msg)

@@ -4,12 +4,10 @@ from typing import Any, List, Dict, Tuple
 
 import torch
 import torch.utils.data
-from torch import nn
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     GenerationConfig,
-    Trainer,
 )
 
 from genrl_swarm.trainer import TrainerModule
@@ -20,7 +18,7 @@ from genrl_swarm.logging_utils.ml_logger import LoggerMixin
 from trl.trainer.grpo_config import GRPOConfig
 from trl.models import create_reference_model
 from trl.data_utils import apply_chat_template
-
+from reasoning_gym.utils import SYSTEM_PROMPTS
 
 class GRPOTrainerModule(TrainerModule, LoggerMixin):
     """
@@ -59,6 +57,7 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         self.epsilon = kwargs.get("epsilon", 0.2)
         self.epsilon_high = kwargs.get("epsilon_high", None)
         self.beta = kwargs.get("beta", 0.0)
+        self.judge_base_url = kwargs.get("judge_base_url", None)
         
         if torch.cuda.is_available():
             self.device = torch.device("cuda")
@@ -365,8 +364,54 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
 
     @torch.no_grad()
     def evaluate(self, state: GameState, data_manager: DataManager, reward_manager: RewardManager):
-        pass
-    
+        import requests
+        from genrl_swarm.logging_utils.global_defs import get_logger
+        base_url = self.judge_base_url
+        if base_url:
+            try:
+                request_data = {'user_id': state.peer_id}
+                response = requests.post(f"{base_url}/request-question/", json=request_data)
+
+                if response.status_code == 200:
+                    result = response.json()
+                    get_logger().debug(f'recieved question: {result["question"]}')
+                else:
+                    get_logger().debug(f'Failed to recieve question: {response.status_code}')
+                    return
+                
+                prompt = [
+                        {"role": "system", "content": SYSTEM_PROMPTS['default']},
+                        {"role": "user", "content": result["question"]}
+                    ]
+                input_ids = self.processing_class.apply_chat_template(prompt, tokenize=True, add_generation_prompt=True, return_tensors="pt")
+                input_ids = input_ids.to(self.model.device)
+                outputs = self.model.generate(input_ids, max_new_tokens=512)
+                answer = self.processing_class.decode(outputs[0], skip_special_tokens=True)
+                session_id = result["session_id"]
+                submission_data = {
+                    "session_id": session_id,
+                    "round_number": state.round,
+                    "user_answer": answer
+                }
+                response = requests.post(
+                    f"{base_url}/submit-answer/",
+                    json=submission_data
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    get_logger().debug(f"Score: {result['score']}")
+                    return 
+                else:
+                    get_logger().debug(f"Failed to submit answer: {response.status_code}")
+                    return
+            except Exception as e:
+                get_logger().debug(f"Failed to evaluate: {e}")
+                return
+        else:
+            return
+
+        
     def save(self, save_dir: str) -> None:
         """
         Save the model and trainer state to the given directory.
