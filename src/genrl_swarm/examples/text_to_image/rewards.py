@@ -1,28 +1,12 @@
 import torch
 import torch.nn as nn
-from typing import List, Dict, Any, Optional, Tuple, Callable, Union
+from typing import Any
 
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError
 from transformers import CLIPModel, CLIPProcessor
-from trl import DDPOPipelineOutput
 
 from genrl_swarm.state import GameState
-
-def get_images_from_outputs(outputs: List[List[List[List[DDPOPipelineOutput]]]]):
-    pi_pairs = []
-    for agent_tensors in outputs:
-        for batch_tensors in agent_tensors:
-            for node_tensors in batch_tensors:
-                print(node_tensors)
-                generated_outputs = node_tensors[0] # everything is in environment state
-                pi_pairs.extend(generated_outputs.prompt_image_pairs)
-
-    # Stack all images into a single tensor
-    images = torch.cat([image for image, _, _ in pi_pairs], dim=0)
-    prompts = [prompt for _, prompt, _ in pi_pairs]
-    prompts = list(chain.from_iterable(prompts))
-    return images, prompts
 
 
 class AestheticScorer(torch.nn.Module):
@@ -145,17 +129,16 @@ class ScorerReward:
 
 
     def __call__(self, game_state: GameState):
-        # images, prompts = get_images_from_outputs(game_state.outputs)
         from genrl_swarm.examples.text_to_image.ddpo_trainer import DDPOSample
-        generations = game_state.get_latest_state()
+        ddpo_samples = game_state.get_stage_actions(0) #single stage game
+
         images = []
         prompts = []
-        for agent in generations:   
-            for batch_idx, batch in enumerate(generations[agent]):
-                for node_idx, node in enumerate(batch):
-                    prompt_image_pairs = node[0]
-                    images.append(prompt_image_pairs[1])
-                    prompts.append(prompt_image_pairs[0])
+        for agent in ddpo_samples:   
+            for batch_idx in ddpo_samples[agent]:
+                for node_idx, _ in enumerate(ddpo_samples[agent][batch_idx]):
+                    images.append(ddpo_samples[agent][batch_idx][node_idx].images)
+                    prompts.append(ddpo_samples[agent][batch_idx][node_idx].prompts)
         images = torch.stack(images)
 
         if self.aesthetic:
@@ -164,6 +147,6 @@ class ScorerReward:
             # scores /= 10
         else:
             scores = self.scorer(images, prompts, None)
-        
+
         return (scores - scores.mean()) / scores.std(), {"mean": scores.mean(), "std": scores.std()}
 

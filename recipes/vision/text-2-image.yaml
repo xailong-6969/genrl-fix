@@ -33,7 +33,6 @@ game_manager:
     _target_: genrl_swarm.state.game_state.GameState
     round: 0
     stage: 0
-    swarm_size: 1
   reward_manager:
     _target_: genrl_swarm.rewards.DefaultRewardManager
     reward_fn_store:
@@ -58,6 +57,7 @@ game_manager:
       train_gradient_accumulation_steps: ${training.train_gradient_accumulation_steps}
       log_with: ${training.log_with}
       sample_num_batches_per_epoch: ${training.sample_num_batches_per_round}
+      save_freq: 100
     sd_pipeline:
       _target_: trl.DefaultDDPOStableDiffusionPipeline
       pretrained_model_name: ${training.pretrained_model}

@@ -6,7 +6,6 @@ import torch
 from torch.amp import GradScaler, autocast
 from collections import defaultdict
 from warnings import warn
-import logging
 import gc
 from trl import DDPOConfig, DefaultDDPOStableDiffusionPipeline
 from genrl_swarm.rewards import RewardManager
@@ -14,24 +13,19 @@ from genrl_swarm.data.data_manager import DataManager
 from genrl_swarm.state import GameState
 from genrl_swarm.logging_utils.ml_logger import ImageLoggerMixin
 from genrl_swarm.trainer.base_trainer import TrainerModule
+from genrl_swarm.logging_utils.global_defs import get_logger
 
-# Set up basic logging to replace accelerate.logging
-logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s', level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 @dataclass
 class DDPOSample:
+    prompts: List[str]
+    images: torch.Tensor
     prompt_embeds: torch.Tensor
     timesteps: torch.Tensor
     latents: torch.Tensor
     next_latents: torch.Tensor
     log_probs: torch.Tensor
     negative_prompt_embeds: torch.Tensor
-
-@dataclass
-class DDPOGeneratedOutput:
-    samples: DDPOSample
-    prompt_image_pairs: List[Any]
 
 
 class DDPOTrainer(TrainerModule, ImageLoggerMixin):
@@ -64,39 +58,18 @@ class DDPOTrainer(TrainerModule, ImageLoggerMixin):
         self.output_dir = output_dir
         self.image_samples_callback = image_samples_hook
         self.rank = rank
-        
-        # Configure rank-specific logger
-        self.logger = logging.getLogger(f"{__name__}[rank {rank}]")
-
-        # Set up resume from checkpoint if needed
-        if self.config.resume_from:
-            self.config.resume_from = os.path.normpath(os.path.expanduser(self.config.resume_from))
-            if "checkpoint_" not in os.path.basename(self.config.resume_from):
-                # get the most recent checkpoint in this directory
-                checkpoints = list(
-                    filter(
-                        lambda x: "checkpoint_" in x,
-                        os.listdir(self.config.resume_from),
-                    )
-                )
-                if len(checkpoints) == 0:
-                    raise ValueError(f"No checkpoints found in {self.config.resume_from}")
-                checkpoint_numbers = sorted([int(x.split("_")[-1]) for x in checkpoints])
-                self.config.resume_from = os.path.join(
-                    self.config.resume_from,
-                    f"checkpoint_{checkpoint_numbers[-1]}",
-                )
-                
-                self.checkpoint_iteration = checkpoint_numbers[-1] + 1
-            else:
-                self.checkpoint_iteration = 0
 
         # number of timesteps within each trajectory to train on
         self.num_train_timesteps = int(self.config.sample_num_steps * self.config.train_timestep_fraction)
         
         # Initialize device
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.logger.info(f"Using device: {self.device}")
+        if torch.cuda.is_available():
+            self.device = torch.device("cuda")
+        elif torch.backends.mps.is_available():
+            self.device = torch.device("mps")
+        else:
+            self.device = torch.device("cpu")
+        get_logger().info(f"Using device: {self.device}")
         
         # Set up mixed precision training
         self.mixed_precision = self.config.mixed_precision
@@ -126,7 +99,7 @@ class DDPOTrainer(TrainerModule, ImageLoggerMixin):
             self.output_dir = os.path.join("outputs", f"rank_{self.rank}_checkpoints")
             os.makedirs(self.output_dir, exist_ok=True)
         
-        self.logger.info(f"\n{config}")
+        get_logger().info(f"\n{config}")
         
         self.sd_pipeline = sd_pipeline
 
@@ -187,18 +160,11 @@ class DDPOTrainer(TrainerModule, ImageLoggerMixin):
                 trainable_layers.to(self.device)
 
         self.first_epoch = 0
-        # Load checkpoint if necessary
-        if config.resume_from:
-            self.logger.info(f"Loading checkpoint from {config.resume_from}")
-            self._load_checkpoint(config.resume_from)
-            self.first_epoch = int(config.resume_from.split("_")[-1]) + 1
-        else:
-            self.first_epoch = 0
 
         self.global_step = 0
         self.accumulated_step = 0
 
-    def generate(self, prompts: List[str]) -> DDPOGeneratedOutput:
+    def generate(self, prompts: List[str]) -> DDPOSample:
         """
         Generate samples from the model
 
@@ -206,7 +172,7 @@ class DDPOTrainer(TrainerModule, ImageLoggerMixin):
             prompts List[str]: List of prompts to generate samples for
 
         Returns:
-            DDPOGeneratedOutput: A dataclass containing samples for training and prompt_image_pairs
+            DDPOSample: A dataclass containing samples for training and reward calculation
         """
         batch_size = len(prompts)
         self.sd_pipeline.unet.eval()
@@ -241,6 +207,8 @@ class DDPOTrainer(TrainerModule, ImageLoggerMixin):
         timesteps = self.sd_pipeline.scheduler.timesteps.repeat(batch_size, 1)  # (batch_size, num_steps)
         
         sample = DDPOSample(
+                prompts = prompts,
+                images = images,
                 prompt_embeds=prompt_embeds,
                 timesteps=timesteps,
                 latents=latents[:, :-1],  # each entry is the latent before timestep t
@@ -250,7 +218,7 @@ class DDPOTrainer(TrainerModule, ImageLoggerMixin):
             )
         
         # Return as a dataclass for better type hinting and organization
-        return DDPOGeneratedOutput(samples=sample, prompt_image_pairs=[prompts, images])
+        return sample
 
     def step(self, game_state: GameState, reward_manager: RewardManager, global_step: int) -> int:
         """
@@ -269,28 +237,12 @@ class DDPOTrainer(TrainerModule, ImageLoggerMixin):
             int: The updated global step
         """
         # Get the latest generated outputs from the game state - this will be a list of outputs from all agents
-        latest_outputs = game_state.get_latest_state()
+        latest_actions = game_state.get_stage_actions(0) #single stage game
+        samples = self.batch_actions(latest_actions)
 
-        generated_outputs = self.batch_latest_state(latest_outputs)
-        
-
-        samples = generated_outputs.samples 
-        prompt_image_data = generated_outputs.prompt_image_pairs
-
-        # The following collate line is no longer needed as 'samples' is already the desired DDPOSample object.
-        # # collate samples into dict where each entry has shape (num_batches_per_epoch * sample.batch_size, ...)
-        # samples = {k: torch.cat([s[k] for s in samples]) for k in samples[0].keys()}
-
-        
         # Get rewards from the reward manager instead of computing them internally, we only have one stage
         rewards, rewards_metadata = reward_manager.rewards[0]
 
-        for i, image_data in enumerate(prompt_image_data):
-            image_data.extend([rewards[i], rewards_metadata])
-
-        if self.image_samples_callback is not None:
-            self.image_samples_callback(prompt_image_data, global_step, self)
-        
         # Log metrics
         log_data = {
             "train/epoch": global_step,
@@ -299,14 +251,8 @@ class DDPOTrainer(TrainerModule, ImageLoggerMixin):
         }
      
         self.log(log_data, global_step)
-        
-        # Also log to console
-        self.logger.info(f"Step {global_step}: reward_mean = {log_data['train/reward_mean']:.4f}, reward_std = {log_data['train/reward_std']:.4f}")
-
+  
         advantages = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
-
-        # Convert DDPOSample object to a dictionary to facility inner epoch training and rebatching according to trl logic
-        samples = asdict(samples)
 
         # In single-device mode, advantages correspond directly to our samples
         samples["advantages"] = torch.as_tensor(advantages).to(self.device)
@@ -352,9 +298,8 @@ class DDPOTrainer(TrainerModule, ImageLoggerMixin):
                     self.optimizer.step()
                 self.optimizer.zero_grad()
 
-        # if global_step != 0 and global_step % self.config.save_freq == 0 and self.is_main_process:
-        #     save_dir = os.path.join(self.output_dir, f"checkpoint_{global_step}")
-        #     self._save_checkpoint(save_dir)
+        if global_step != 0 and global_step % self.config.save_freq == 0 and self.is_main_process:
+            self._save_checkpoint(global_step)
 
         unscaled_rewards = rewards * rewards_metadata["std"] + rewards_metadata["mean"]    
         self.log({"train/rewards": unscaled_rewards.mean().item()}, global_step)
@@ -549,18 +494,17 @@ class DDPOTrainer(TrainerModule, ImageLoggerMixin):
         return global_step
 
 
-    def batch_latest_state(self, latest_state):
+    def batch_actions(self, actions):
         all_samples = []
         all_prompt_image_pairs = []
 
         # Iterate through all agents to populate all_samples and all_prompt_image_pairs
-        for agent in latest_state:
+        for agent in actions:
             # Iterate through each batch for this agent
-            for batch_outputs in latest_state[agent]:
+            for batch_idx in actions[agent]:
                 # Each batch may have multiple generations
-                for node in batch_outputs:
-                    all_samples.append(node[1]) # node[1] is DDPOSample
-                    all_prompt_image_pairs.append(node[0]) # node[0] is prompt_image_pair
+                for node_idx, node in enumerate(actions[agent][batch_idx]):
+                    all_samples.append(node) # node is DDPOSample
 
 
         prompt_embeds_list = []
@@ -578,7 +522,6 @@ class DDPOTrainer(TrainerModule, ImageLoggerMixin):
             log_probs_list.append(sample_item.log_probs)
             negative_prompt_embeds_list.append(sample_item.negative_prompt_embeds)
 
-        
         stacked_prompt_embeds = torch.stack(prompt_embeds_list)
         stacked_timesteps = torch.stack(timesteps_list)
         stacked_latents = torch.stack(latents_list)
@@ -587,6 +530,8 @@ class DDPOTrainer(TrainerModule, ImageLoggerMixin):
         stacked_negative_prompt_embeds = torch.stack(negative_prompt_embeds_list)
 
         batched_samples = DDPOSample(
+            prompts = None,
+            images = None,
             prompt_embeds=stacked_prompt_embeds,
             timesteps=stacked_timesteps,
             latents=stacked_latents,
@@ -595,12 +540,12 @@ class DDPOTrainer(TrainerModule, ImageLoggerMixin):
             negative_prompt_embeds=stacked_negative_prompt_embeds,
         )
 
-        generated_outputs = DDPOGeneratedOutput(
-            samples=batched_samples,
-            prompt_image_pairs=all_prompt_image_pairs
-        )
+        # Convert DDPOSample object to a dictionary to facility inner epoch training and rebatching according to trl logic
+        samples = asdict(batched_samples)
+        del samples['prompts'] # not needed for training
+        del samples['images'] # not needed for training
 
-        return generated_outputs
+        return samples
 
     def cleanup(self):
         if torch.cuda.is_available():
@@ -669,7 +614,10 @@ class DDPOTrainer(TrainerModule, ImageLoggerMixin):
             optimizer=optimizer,
         )
 
-    
+    def _save_checkpoint(self, global_step):
+        name = f'checkpoint_{global_step}'
+        self.sd_pipeline.save_pretrained(os.path.join(self.output_dir, name))
+
     @torch.no_grad()
     def evaluate(self, game_state: GameState, data_manager: DataManager, reward_manager: RewardManager):
         seed = 42
@@ -677,20 +625,21 @@ class DDPOTrainer(TrainerModule, ImageLoggerMixin):
         generator = generator.manual_seed(seed)
         eval_data_loader = data_manager.get_eval_data()
         prompts = next(iter(eval_data_loader))
-        prompts = [x[0] for x in prompts]
+        prompts = [x[1].environment_states for x in prompts] # prompts are tuples (batch idx, WorldState)
+
         images = self.sd_pipeline(prompts, generator=generator, output_type="pt").images.cpu()
 
-        reward_fn = reward_manager.dispatch_reward_fn(reward_manager.round, reward_manager.stage) # TODO: should have an eval method
+        reward_fn = reward_manager.dispatch_reward_fn(reward_manager.round, 0) # single stage game
         rewards, scalers_dict = reward_fn.evaluation(prompts, images)
         rewards = rewards * scalers_dict["std"] + scalers_dict["mean"]
 
         self.log_images(images, prompts, reward_manager.round)
         # Log evaluation metrics
         reward_mean = rewards.mean().item()
-        self.logger.info(f"Evaluation at round {reward_manager.round}: mean reward = {reward_mean:.4f}")
+        get_logger().info(f"Evaluation at round {reward_manager.round}: mean reward = {reward_mean:.4f}")
         self.log({"eval/reward": reward_mean}, reward_manager.round)
         
-        return {'prompts': prompts, 'images': images, 'rewards': rewards}
+        return
 
     def cleanup(self):
         self.cleanup_trackers()
