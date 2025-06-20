@@ -6,6 +6,7 @@ from datasets import load_dataset, Dataset
 from torch import Tensor
 from numpy import ndarray
 
+from genrl_swarm.communication import Payload
 from genrl_swarm.state import GameState, WorldState
 from genrl_swarm.data import DataManager
 from genrl_swarm.misc_utils.utils import generate_md5_hash_id
@@ -63,6 +64,8 @@ class LocalMemoryTextDataManager(DataManager):
             if batch_id in swarm_states[agent_id]:
                 for node_idx, _ in enumerate(swarm_states[agent_id][batch_id]):
                     agent_action = swarm_states[agent_id][batch_id][node_idx]
+                    if isinstance(agent_action, Payload) and hasattr(agent_action, 'actions'):
+                        agent_action = agent_action.actions
                     if isinstance(agent_action, str):
                         opponent_responses.append(agent_action)
                     elif isinstance(agent_action, list):

@@ -1,4 +1,4 @@
-from genrl_swarm.examples.gsm8k.reward_utils import format_reward, correctness_reward, validity_reward, extract_responses, parse_game_state
+from genrl_swarm.examples.multistage_math.reward_utils import format_reward, correctness_reward, validity_reward, parse_game_state
 
 #TODO(gab): Double check these regex more carefully+add tests
     

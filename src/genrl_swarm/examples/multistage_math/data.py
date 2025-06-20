@@ -3,6 +3,7 @@ from datasets import load_dataset, Dataset
 from typing import Dict, List, Tuple, Any
 
 from genrl_swarm.data import LocalMemoryTextDataManager
+from genrl_swarm.state import WorldState
 
 # --- Constants (System Prompts) ---
 STAGE0_SYSTEM_PROMPT = """
@@ -12,7 +13,7 @@ Remember to put your answer on its own line after \"Answer:\".
 """
 
 STAGE1_SYSTEM_PROMPT = """
-You are reviewing solutions to a given math problem that have been submitted by students in a study group. Your goal is to determine which solution is best amongst all the solutions you receive.
+You are reviewing solutions to a given math problem that have been submitted by students in a study group. Your goal is to determine which solution is best amongst all the solutions you receive. If all solutions are equally good, choose the one that is most concise.
 Before responding to the math problem all students in the study group were instructed to think through the solution of the problem step by step and then state their final answer on its own line after \"Answer:\".
 Ideal solutions to the problem will satisfy three important criteria: 1) Their step by step reasoning is correct, concise, and clearly related to the problem. 2) The last line of the solution should be of the form Answer: $Answer (without quotes) where $Answer is the answer to the problem. 3) The final answer is mathematically correct answer.
 Give a step by step comparison of the different solutions you received and explain why a specific solution is the best according to the three stated criteria (or why no answer is correct).
@@ -21,7 +22,7 @@ Remember to put your final choice on its own line after \"Choice:\".
 """
 
 STAGE2_SYSTEM_PROMPT = """
-You are part of a mathematics study group. After receiving a math problem, all members of your study group independantly came up with their own solution and then compared all the proposed solution. Treat the best solutions to the problem and the feedback/criticisms about them as additional information, then think through the solution of the problem step by step again and state the final answer.
+You are part of a mathematics study group. After receiving a math problem, all members of your study group independently came up with their own solution and then compared all the proposed solution. Treat the best solutions to the problem and the feedback/criticisms about them as additional information, then think through the solution of the problem step by step again and state the final answer.
 Before responding to the math problem all students in the study group were instructed to state their final answer on its own line after \"Answer:\". Similarly, before comparing/criticizing the proposed solutions, all students were instructed to put their final choice on its own line after \"Choice:\".
 An ideal solution will satisfy three important criteria: 1) Your step by step reasoning is correct, concise, and clearly related to the problem. 2) The last line of your response should be of the form Answer: $Answer (without quotes) where $Answer is the answer to the problem. 3) The final answer you give will be the mathematically correct answer.
 Remember to put your answer on its own line after \"Answer:\".
@@ -112,27 +113,27 @@ class MSMDataManager(LocalMemoryTextDataManager):
         else:
             return self.generate_system_prompt(self.STAGE2_SYSTEM_PROMPT)
 
-    def state_to_user_prompt(self, state: Tuple[Any, Any, Any], stage: int) -> str:
+    def state_to_user_prompt(self, state: WorldState, stage: int) -> str:
         if stage == 0:
-            return state[0]['question'] #User prompt is just the math question in this case
+            return state.environment_states['question'] #User prompt is just the math question in this case
         else:
             return self.append_to_last_stage_prompt(state, stage)
 
-    def state_to_answer(self, state: Tuple[Any, Any, Any]) -> str:
-        return state[0]['answer']
+    def state_to_answer(self, state: WorldState) -> str:
+        return state.environment_states['answer']
     
-    def append_to_last_stage_prompt(self, state: Tuple[Any, Any, Any], stage: int) -> str:
+    def append_to_last_stage_prompt(self, state: WorldState, stage: int) -> str:
         sp = []
         if stage == 1:
-            sp.append(f"The given math problem is: {state[0]['question']}" + "  \n\n")
+            sp.append(f"The given math problem is: {state.environment_states['question']}" + "  \n\n")
             sp.append("The following solutions were suggested for this problem:" + " \n")
-            for idx, opponent_response in enumerate(state[1]): #NOTE: Assumes opponent states are already being stored as a list of generated strings from the opponent
+            for idx, opponent_response in enumerate(state.opponent_states): #NOTE: Assumes opponent states are already being stored as a list of generated strings from the opponent
                 sp.append(f"--> Student #{idx} said: {opponent_response}\n\n")
             sp.append('Remember to choose an appropriate \"Student #\" (or say None), explain your choice, put your final choice on its own line after \"Choice:\".\n\n')
         elif stage == 2:
-            sp.append(f"{self.state_to_user_prompt(state[0]['prior_stage_input_states'], stage=1)}" + "  \n")
+            sp.append(f"{self.state_to_user_prompt(state.environment_states['prior_stage_input_states'], stage=1)}" + "  \n")
             sp.append("After comparing these solutions, the following feedback was given about which answer is best:" + " \n")
-            for idx, opponent_response in enumerate(state[1]): #NOTE: Assumes opponent states are already being stored as a list of generated strings from the opponent
+            for idx, opponent_response in enumerate(state.opponent_states): #NOTE: Assumes opponent states are already being stored as a list of generated strings from the opponent
                 sp.append(f"--> Criticism #{idx} was: {opponent_response}\n\n")
             sp.append('Remember to think through your solution step by step and put your answer on its own line after \"Answer:\".\n\n')
         else:
@@ -153,13 +154,13 @@ class MSMDataManager(LocalMemoryTextDataManager):
         return flattened_input
 
     def prepare_environment(self,
-                            node_states: List[Any],
+                            node_states: WorldState,
                             swarm_states: Dict[Any, Any],
                             stage: int,
                             agent: Any,
                             batch_id: Any
                             ) -> Any:
-        return node_states[0]
+        return node_states.environment_states
 
     def prepare_opponent(self,
                          node_states: List[Any],

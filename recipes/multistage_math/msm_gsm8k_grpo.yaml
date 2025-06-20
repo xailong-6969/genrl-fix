@@ -1,4 +1,4 @@
-log_dir: /home/gensyn/shared/test
+log_dir: ${oc.env:ROOT,.}/logs 
 
 training:
   max_round: 2
@@ -6,7 +6,7 @@ training:
   prune_K: 5
 
 game_manager:
-  _target_: genrl_swarm.examples.multistage_math.game_manager_no_payload.MSMGameManager
+  _target_: genrl_swarm.game.game_manager.BaseGameManager
   max_stage: ${training.max_stage}
   max_round: ${training.max_round}
   prune_K: ${training.prune_K}
@@ -30,12 +30,12 @@ game_manager:
     _target_: genrl_swarm.examples.multistage_math.trainer.GRPOTrainerModule
     models:
       - _target_: transformers.AutoModelForCausalLM.from_pretrained
-        pretrained_model_name_or_path: /home/gensyn/shared/models/qwen-2.5-0.5B-Instruct
+        pretrained_model_name_or_path: Gensyn/Qwen2.5-0.5B-Instruct
         config: trl.trainer.GRPOConfig
     num_generations: 2
     log_with: tensorboard
   data_manager:
     _target_: genrl_swarm.examples.multistage_math.data.MSMDataManager
-    train_dataset: /home/gensyn/shared/data/gsm8k
+    train_dataset: openai/gsm8k
     # num_students_to_sample, num_critics_to_sample, subsampling_method, prompt_generator_role use defaults
   run_mode: "train"
