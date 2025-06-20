@@ -10,6 +10,7 @@ from genrl_swarm.state import GameState, WorldState
 from genrl_swarm.data import LocalMemoryTextDataManager
 from genrl_swarm.misc_utils.utils import generate_md5_hash_id
 from genrl_swarm.logging_utils.global_defs import get_logger
+from genrl_swarm.examples.rgym.reward_utils import accuracy_reward
 
 class ReasoningGymDataManager(LocalMemoryTextDataManager):
     """Data Manager for Reasoning Gym Datasets.
@@ -252,6 +253,12 @@ class ReasoningGymDataManager(LocalMemoryTextDataManager):
                 for batch_id in swarm_states[agent]:
                     for payload in swarm_states[agent][batch_id]:
                         transplants[(agent, batch_id)] = payload
-        hashed_trees = [generate_md5_hash_id(str(key[1])) for key in transplants]
-        deterministic_scrambled_trees = [key for _, key in sorted(zip(hashed_trees, transplants))]
-        return {key: transplants[key] for key in deterministic_scrambled_trees[:num_transplants]}
+        total_score_per_tree = [sum(accuracy_reward(transplants[key]["actions"], transplants[key]["world_state"].environment_states['answer'], transplants[key]["world_state"].environment_states['metadata'])) for key in transplants]
+        sorted_trees = [key for _, key in sorted(zip(total_score_per_tree, transplants))]  #TODO(gab): Should we be sorting by avg rather than total score? Should we be filtering by "advantage" rather than bounding score stats? 
+        try:
+            lower_bound_idx_filter = next(idx for idx, tot_score in enumerate(total_score_per_tree) if tot_score!=0)
+            sorted_trees = sorted_trees[lower_bound_idx_filter:]
+            num_transplants = min(num_transplants, len(sorted_trees))
+            return {key: transplants[key] for key in sorted_trees[-num_transplants:]}
+        except StopIteration: #All elements of total_score_per_tree are == 0
+            return {} #Default to not taking anything from the swarm, but reasonable alternative might be to do a random sample instead

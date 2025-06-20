@@ -55,8 +55,9 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         self.num_generations = kwargs.get("num_generations", 2)
         assert self.num_generations > 1, f"For GRPO training, number of generations must be > 1, got {self.num_generations}"
         self.epsilon = kwargs.get("epsilon", 0.2)
-        self.epsilon_high = kwargs.get("epsilon_high", None)
+        self.epsilon_high = kwargs.get("epsilon_high", 0.28)
         self.beta = kwargs.get("beta", 0.0)
+        self.enable_gradient_checkpointing = kwargs.get("enable_gradient_checkpointing", True)
         self.judge_base_url = kwargs.get("judge_base_url", None)
         
         if torch.cuda.is_available():
@@ -67,17 +68,17 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
             self.device = torch.device("cpu")
         
         # Initialize core components
-        self._initialize_model()
+        self._initialize_model(self.enable_gradient_checkpointing)
         self._initialize_tokenizers()
         self._initialize_metrics()
         self._initialize_generation_config()
         self.init_tracker(self.save_dir, log_with=kwargs.get("log_with", None))
     
-    def _initialize_model(self):
+    def _initialize_model(self, enable_gradient_checkpointing):
         """Initialize the model and reference model."""
-        # # Set up model hyperparameters
-        # self.beta = self.args.beta
         self.model = self.model.to(self.device)
+        if enable_gradient_checkpointing:
+            self.model.gradient_checkpointing_enable()
 
         # Reference model setup
         if self.beta == 0.0:

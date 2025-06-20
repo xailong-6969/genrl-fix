@@ -221,7 +221,6 @@ class BaseGameManager(DefaultGameManagerMixin, GameManager):
     def __init__(self,
                  max_stage: int,
                  max_round: int,
-                 prune_K: int,
                  game_state: GameState, 
                  reward_manager: RewardManager, 
                  trainer: TrainerModule, 
@@ -233,7 +232,6 @@ class BaseGameManager(DefaultGameManagerMixin, GameManager):
         """Init a GameManager which ends the game when max_rounds is reached, ends stage when max_stage is reached, and prunes according to top-k rewards"""
         self.max_stage = max_stage
         self.max_round = max_round
-        self.prune_K = prune_K
         kwargs = {"game_state": game_state, 
                   "reward_manager": reward_manager, 
                   "trainer": trainer, 
@@ -263,7 +261,6 @@ class SwarmGameManager(BaseGameManager, DefaultGameManagerMixin):
                  coordinator: SwarmCoordinator, 
                  max_stage: int,
                  max_round: int,
-                 prune_K: int,
                  game_state: GameState, 
                  reward_manager: RewardManager, 
                  trainer: TrainerModule, 
@@ -281,7 +278,6 @@ class SwarmGameManager(BaseGameManager, DefaultGameManagerMixin):
         super().__init__(
             max_stage=max_stage,
             max_round=max_round,
-            prune_K=prune_K,
             game_state=game_state,
             reward_manager=reward_manager,
             trainer=trainer,
