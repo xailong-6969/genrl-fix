@@ -315,7 +315,7 @@ class SwarmGameManager(BaseGameManager, DefaultGameManagerMixin):
         #enable push to HF if token was provided
         self.hf_token = hf_token
         if self.hf_token not in [None, "None"]:
-            username = whoami()["name"]
+            username = whoami(token=self.hf_token)["name"]
             model_name = self.trainer.model.config.name_or_path.split('/')[-1] 
             model_name += '-Gensyn-Swarm'
             model_name += f"-{self.animal_name}"
