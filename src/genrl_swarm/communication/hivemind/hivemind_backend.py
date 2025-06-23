@@ -56,12 +56,20 @@ class HivemindBackend(Communication):
         self,
         initial_peers: List[str] | None = None,
         timeout: int = 600,
+        disable_caching: bool = False,  
+        beam_size: int = 1000, 
         **kwargs,
     ):
         self.world_size = int(os.environ.get("HIVEMIND_WORLD_SIZE", 1))
         self.timeout = timeout
         self.bootstrap = HivemindRendezvouz.is_bootstrap()
+        self.beam_size = beam_size 
         self.dht = None
+        
+        if disable_caching:
+            kwargs['cache_locally'] = False
+            kwargs['cache_on_store'] = False
+            
         if self.bootstrap:
             self.dht = DHT(
                 start=True,
@@ -69,7 +77,7 @@ class HivemindBackend(Communication):
                 initial_peers=initial_peers,
                 **kwargs,
             )
-            dht_maddrs = self.dht.get_visible_maddrs()
+            dht_maddrs = self.dht.get_visible_maddrs(latest=True)
             HivemindRendezvouz.set_initial_peers(dht_maddrs)
         else:
             initial_peers = initial_peers or HivemindRendezvouz.get_initial_peers()
@@ -82,18 +90,21 @@ class HivemindBackend(Communication):
         self.step_ = 0
 
     def all_gather_object(self, obj: Any) -> Dict[str| int, Any]:
-        # TODO(jkolehm): change pickle to something more secure before launching the code.
         key = str(self.step_)
+        _ = self.dht.get_visible_maddrs(latest=True)
         obj_bytes = to_bytes(obj)
         self.dht.store(
             key,
             subkey=str(self.dht.peer_id),
             value=obj_bytes,
             expiration_time=get_dht_time() + self.timeout,
+            beam_size=self.beam_size,  
         )
+        
+        time.sleep(1)
         t_ = time.monotonic()
         while True:
-            output_, _ = self.dht.get(key)
+            output_, _ = self.dht.get(key, beam_size=self.beam_size, latest=True)
             if len(output_) >= self.world_size:
                 break
             else:
@@ -111,3 +122,4 @@ class HivemindBackend(Communication):
 
     def get_id(self):
         return str(self.dht.peer_id)
+    
