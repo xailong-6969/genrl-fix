@@ -19,6 +19,7 @@ from trl.trainer.grpo_config import GRPOConfig
 from trl.models import create_reference_model
 from trl.data_utils import apply_chat_template
 from reasoning_gym.utils import SYSTEM_PROMPTS
+import contextlib
 
 class GRPOTrainerModule(TrainerModule, LoggerMixin):
     """
@@ -62,10 +63,13 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         
         if torch.cuda.is_available():
             self.device = torch.device("cuda")
+            self.autocast = torch.amp.autocast(device_type=self.device.type, enabled=self.args.fp16)
         elif torch.backends.mps.is_available():
             self.device = torch.device("mps")
+            self.autocast = contextlib.nullcontext()
         else:
             self.device = torch.device("cpu")
+            self.autocast = contextlib.nullcontext()
         
         # Initialize core components
         self._initialize_model(self.enable_gradient_checkpointing)
@@ -348,7 +352,7 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         model_inputs["advantages"] = advantages.squeeze(dim=-1)
         model_inputs["old_per_token_logps"] = None
 
-        with torch.amp.autocast(device_type="cuda", enabled=self.args.fp16):
+        with self.autocast:
             loss = self.compute_loss(self.model, model_inputs)
         
         loss.backward()
@@ -458,6 +462,8 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
     def cleanup_step(self):
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+        elif torch.mps.is_available():
+            torch.mps.empty_cache()
         gc.collect()
 
     def cleanup(self):
