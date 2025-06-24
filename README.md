@@ -24,3 +24,13 @@ GenRL-Swarm is a framework that provides native support for horizontally scalabl
 
 We track the progression of the game on a per-round basis.  Each round the data manager initializes round data.  The round data kicks off the game’s stages, for each stage rollouts are generated, appended to the game state, and communicated to the swarm.  After the agent has progressed through the game’s predefined stages, rewards are evaluated and policies are updated. The user has full control over the update, which occurs in the Trainer.train method, and so has the opportunity to update the policy on a per stage or per round basis. 
 ![orchestrated data flow through the framework](assets/data-flow.png)
+
+## Example Usage
+```bash
+pip install .[examples]
+export NUM_PROC_PER_NODE=1
+export NUM_NODES=1
+export MASTER_ADDR="localhost"
+export MASTER_PORT=29500
+./scripts/train.sh $NUM_NODES $NUM_PROC_PER_NODE multistage_math msm_dapodata_grpo.yaml
+```

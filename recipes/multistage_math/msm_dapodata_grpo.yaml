@@ -3,13 +3,11 @@ log_dir: ${oc.env:ROOT,.}/logs
 training:
   max_round: 2
   max_stage: 3
-  prune_K: 5
 
 game_manager:
   _target_: genrl_swarm.game.game_manager.BaseGameManager
   max_stage: ${training.max_stage}
   max_round: ${training.max_round}
-  prune_K: ${training.prune_K}
   game_state: 
     _target_: genrl_swarm.state.GameState
     round: 0
