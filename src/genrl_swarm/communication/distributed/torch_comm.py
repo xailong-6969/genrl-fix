@@ -30,3 +30,17 @@ class TorchBackend(Communication):
 
     def get_id(self):
         return dist.get_rank()
+
+class MockTorchBackend(Communication):
+    """
+    Mock torch backend for single agent, on-device usecases
+    """
+    def __init__(self, world_sizes: Sequence[tuple[str, int]] | None = None):
+        self._mesh = None
+
+    def all_gather_object(self, obj: Any, *args, **kwargs) -> Dict[str | int, Any]:
+        out = [obj]
+        return {index: value for index, value in enumerate(out)}
+
+    def get_id(self):
+        return 0

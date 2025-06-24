@@ -239,3 +239,105 @@ class LocalMemoryTextDataManager(DataManager):
         NOTE: Said data can come from a node's states at the current stage, states received from communication with the swarm, and/or any other sources you choose to provide
         """
         pass
+
+
+
+class SimpleTextDataManager(LocalMemoryTextDataManager):
+    """
+    A simple data manager for text-based games. This data manager assumes there is only a single stage.
+    """
+    def __init__(self,
+                 train_dataset: str | None,
+                 evaluation_dataset: str | None = None,
+                 num_train_samples: int | None = 5,
+                 num_evaluation_samples: int | None = None,
+                 column_name_map: Dict[str,str] = None,
+                 column_preprocessing_map: Dict[str, Callable] | None = None,
+                 seed: int | None = None,
+                 batch_item_id_column: str | None = None,
+                 data_generator: Callable | None = None,
+                 answer_extractor: Callable | None = None,
+                 system_prompt: str | None = "",
+                 **kwargs
+                 ):
+        
+        super().__init__(train_dataset=train_dataset,
+                         evaluation_dataset=evaluation_dataset,
+                         num_train_samples=num_train_samples,
+                         num_evaluation_samples=num_evaluation_samples,
+                         column_name_map=column_name_map,
+                         column_preprocessing_map=column_preprocessing_map,
+                         seed=seed,
+                         batch_item_id_column=batch_item_id_column,
+                         data_generator=data_generator,
+                         subsets=kwargs.get("data_subset", None),
+                         **kwargs
+                         )
+
+        self.answer_extractor = answer_extractor
+        self.system_prompt = system_prompt
+    
+    def state_to_user_prompt(self, state: Tuple[Any, Any, Any]) -> str:
+        return state.environment_states['question'] #User prompt is just the math question in this case
+
+    def state_to_answer(self, state: Tuple[Any, Any, Any]) -> str:
+        return state.environment_states['answer']
+    
+    # --- Required Game-Dependant Methods ---
+    def flatten_states(self, flattened_input: Dict[str, List[Any]], state: List[Any], stage: int) -> Dict[str, List[Any]]:
+        """Return a dictionary keyed on columns for batched input to the model, where each key points to a ordered list of values each row of that column will have"""
+        if flattened_input == {}:
+            flattened_input = {'system_prompt': [], 'user_prompt': [], 'answer': [], 'metadata': []}
+        
+        flattened_input['system_prompt'].append(self.system_prompt)
+        flattened_input['user_prompt'].append(self.state_to_user_prompt(state))
+        flattened_input['answer'].append(self.state_to_answer(state))
+        
+        if 'metadata' in state.environment_states:
+            flattened_input['metadata'].append(state.environment_states['metadata'])
+        elif hasattr(state, 'metadata') and state.metadata is not None:
+            flattened_input['metadata'].append(state.metadata)
+        else:
+            flattened_input['metadata'].append({})
+
+        return flattened_input
+
+    def prepare_environment(self,
+                          node_states: List[Any],
+                          swarm_states: Dict[Any, Any],
+                          stage: int,
+                          agent: Any,
+                          batch_id: Any
+                          ) -> Any:
+        """
+        Returns data that should be passed onto a node's children as an environment state when starting the next stage of the game. 
+        NOTE: Said data can come from a node's states at the current stage, states received from communication with the swarm, and/or any other sources you choose to provide
+        """
+        return node_states.environment_states
+    
+    def prepare_opponent(self,
+                       node_states: List[Any],
+                       swarm_states: Dict[Any, Any],
+                       stage: int,
+                       agent: Any,
+                       batch_id: Any
+                       ) -> Any:
+        """
+        Returns data that should be passed onto a node's children as an opponent state when starting the next stage of the game. 
+        NOTE: Said data can come from a node's states at the current stage, states received from communication with the swarm, and/or any other sources you choose to provide
+        """
+        pass
+    
+
+    def prepare_personal(self,
+                       node_states: List[Any],
+                       swarm_states: Dict[Any, Any],
+                       stage: int,
+                       agent: Any,
+                       batch_id: Any
+                       ) -> Any:
+        """
+        Returns data that should be passed onto a node's children as an personal state when starting the next stage of the game. 
+        NOTE: Said data can come from a node's states at the current stage, states received from communication with the swarm, and/or any other sources you choose to provide
+        """
+        pass
