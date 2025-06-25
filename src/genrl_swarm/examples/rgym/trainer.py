@@ -374,7 +374,14 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         base_url = self.judge_base_url
         if base_url:
             try:
-                request_data = {'user_id': state.peer_id, 'round_number': state.round}
+                model_name = self.model.name_or_path
+            except AttributeError:
+                model_name = 'none'
+
+            try:
+                request_data = {'user_id': state.peer_id,
+                                'round_number': state.round,
+                                'model_name': model_name}
                 response = requests.post(f"{base_url}/request-question/", json=request_data)
 
                 if response.status_code == 200:
