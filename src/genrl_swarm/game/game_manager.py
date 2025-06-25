@@ -139,7 +139,7 @@ class GameManager(abc.ABC): #TODO: Make this use enum
         # Loop through rounds until end of the game is hit
         while not self.end_of_game():
             try:
-                get_logger().info(f"Starting round: {self.state.round+1}/{getattr(self, 'max_round', None)}.")
+                get_logger().info(f"Starting round: {self.state.round}/{getattr(self, 'max_round', None)}.")
                 self.run_game_round() # Loops through stages until end of round signal is received
             except:
                 get_logger().exception("Exception occurred during game run.", stack_info=True)
