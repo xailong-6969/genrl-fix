@@ -120,7 +120,7 @@ class HivemindBackend(Communication):
                 key=lambda x: x[0],
             )
             return {key: value for key, value in tmp}
-        except BlockingIOError:
+        except (BlockingIOError, EOFError) as e:
             return {str(self.dht.peer_id): obj}
 
     def get_id(self):
