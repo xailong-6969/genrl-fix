@@ -1,17 +1,17 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: genrl-swarm-test # Everywhere that says "example" here ought to match.
+  name: genrl-test # Everywhere that says "example" here ought to match.
   namespace: research
 spec:
   clusterIP: None
   selector:
-    job-name: genrl-swarm-test # Everywhere that says "example" here ought to match.
+    job-name: genrl-test # Everywhere that says "example" here ought to match.
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: genrl-swarm-test # Everywhere that says "example" here ought to match.
+  name: genrl-test # Everywhere that says "example" here ought to match.
   namespace: research
   annotations:
     kueue.x-k8s.io/queue-name: research-queue
@@ -42,7 +42,7 @@ spec:
         - name: gcp-repo-creds
 
       restartPolicy: Never
-      subdomain: genrl-swarm-test # Everywhere that says "example" here ought to match.
+      subdomain: genrl-test # Everywhere that says "example" here ought to match.
 
       volumes:
       - emptyDir:
@@ -64,12 +64,12 @@ spec:
           command:
             - bash
             - -c
-            - 'cd /home/gensyn/shared/source/genrl-swarm && rm -rf build && pip install . && . scripts/train.sh 2 8 testing test.yaml'
+            - 'cd /home/gensyn/shared/source/genrl && rm -rf build && pip install . && . scripts/train.sh 2 8 testing test.yaml'
 
           env:
           - name: MASTER_ADDR
             # Every node will be discoverable at <job_name>-<index>.<subdomain>.research.svc.cluster.local
-            value: genrl-swarm-test-0.genrl-swarm-test.research.svc.cluster.local 
+            value: genrl-test-0.genrl-test.research.svc.cluster.local 
 
           - name: MASTER_PORT
             value: '29500'

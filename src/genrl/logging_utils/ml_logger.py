@@ -30,7 +30,7 @@ class LoggerMixin:
             self.tracker = tensorboard.SummaryWriter(self.logging_dir)
         elif self.log_with == LogTypes.WANDB:
             self.tracker = wandb.init(
-                project="genrl-swarm", dir=logging_dir, mode="offline"
+                project="genrl", dir=logging_dir, mode="offline"
             )
         else:
             self.tracker = get_logger()

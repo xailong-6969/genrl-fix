@@ -64,7 +64,7 @@ spec:
           command:
             - bash
             - -c
-            - 'cp -r /home/gensyn/shared/source/genrl-swarm ~/ && cd ~/genrl-swarm && pip install .[examples] && . scripts/train.sh 2 8 rgym rg-swarm-torch.yaml'
+            - 'cp -r /home/gensyn/shared/source/genrl ~/ && cd ~/genrl && pip install .[examples] && . scripts/train.sh 2 8 rgym rg-swarm-torch.yaml'
 
           env:
           - name: MASTER_ADDR

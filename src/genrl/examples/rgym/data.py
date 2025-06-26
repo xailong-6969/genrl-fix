@@ -16,7 +16,7 @@ from genrl.state import GameState, WorldState
 class ReasoningGymDataManager(LocalMemoryTextDataManager):
     """Data Manager for Reasoning Gym Datasets.
 
-    This class integrates reasoning-gym's composite datasets with genrl-swarm's
+    This class integrates reasoning-gym's composite datasets with genrl
     data management framework, providing infinite iteration through reseeding.
     """
 

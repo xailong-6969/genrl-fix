@@ -69,7 +69,7 @@ game_manager:
     judge_base_url: ${eval.judge_base_url}
   data_manager:
     _target_: genrl.examples.rgym.data.ReasoningGymDataManager
-    yaml_config_path: "genrl-swarm/src/genrl/examples/rgym/datasets.yaml"
+    yaml_config_path: "genrl/src/genrl/examples/rgym/datasets.yaml"
     num_train_samples: 2
     num_evaluation_samples: 0
     system_prompt_id: 'default'
