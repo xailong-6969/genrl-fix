@@ -1,6 +1,6 @@
 from unittest import TestCase
 
-from genrl_swarm.state import GameNode, DefaultGameTree, WorldState
+from genrl.state import GameNode, DefaultGameTree, WorldState
 
 class TestGameTree(TestCase):
     def setUp(self) -> None:

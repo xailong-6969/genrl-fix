@@ -3,7 +3,7 @@ import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
-from genrl_swarm.communication.distributed.torch_comm import TorchBackend
+from genrl.communication.distributed.torch_comm import TorchBackend
 
 
 def _test_communication(rank, init_method, world_size):

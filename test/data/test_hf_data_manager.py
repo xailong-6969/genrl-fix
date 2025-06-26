@@ -3,7 +3,7 @@ import pytest
 # Skip this entire test file
 pytest.skip("Skipping all tests in test_hf_data_manager.py", allow_module_level=True)
 
-from genrl_swarm.data.hf_data_manager import SerialHuggingFaceDataManager
+from genrl.data.hf_data_manager import SerialHuggingFaceDataManager
 
 
 def test_serial_huggingface_data_manager():

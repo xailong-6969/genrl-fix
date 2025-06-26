@@ -1,5 +1,5 @@
 from unittest import TestCase
-from genrl_swarm.rewards import RoundRewardFnStore, RewardFnStore
+from genrl.rewards import RoundRewardFnStore, RewardFnStore
 
 
 class TestRoundRewardStore(TestCase):

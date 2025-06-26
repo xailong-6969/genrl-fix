@@ -8,7 +8,7 @@ package-dir = {"" = "src"}
 [tool.setuptools_scm]
 
 [project]
-name = "genrl_swarm"
+name = "genrl"
 dynamic = ["version"]
 description = "A General RL framerwork in a swarm environment"
 readme = "README.md"

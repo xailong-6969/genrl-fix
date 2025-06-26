@@ -7,9 +7,9 @@ import torch
 import torch.multiprocessing as mp
 from transformers import Qwen2Config
 
-from genrl_swarm.models.moe.distributed_moe_layer_utils import \
+from genrl.models.moe.distributed_moe_layer_utils import \
     DistributedMoEContext
-from genrl_swarm.models.moe.moe_helpers import (Qwen2ForCausalLM,
+from genrl.models.moe.moe_helpers import (Qwen2ForCausalLM,
                                                 from_qwen_to_moe)
 
 

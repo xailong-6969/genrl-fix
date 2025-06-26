@@ -2,7 +2,7 @@ import hashlib
 
 import pytest
 
-from genrl_swarm.serialization.game_tree import from_bytes, to_bytes
+from genrl.serialization.game_tree import from_bytes, to_bytes
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,7 @@
 from unittest import TestCase
 import torch
 
-from genrl_swarm.state import GameState, WorldState
+from genrl.state import GameState, WorldState
 
 
 class TestGameState(TestCase):

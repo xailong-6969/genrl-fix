@@ -6,7 +6,7 @@ import pytest
 pytest.skip("Skipping all tests in test_hivemind_backend.py", allow_module_level=True)
 import torch.multiprocessing as mp
 
-from genrl_swarm.communication.hivemind.hivemind_backend import (
+from genrl.communication.hivemind.hivemind_backend import (
     HivemindBackend,
     HivemindRendezvouz,
 )
