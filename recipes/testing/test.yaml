@@ -3,5 +3,5 @@
 log_dir: /home/gensyn/shared/test
 
 game_manager:
-  _target_: genrl_swarm.testing.testing_utils.TestGameManager
+  _target_: genrl.testing.testing_utils.TestGameManager
   msg: this is test game

@@ -9,6 +9,6 @@ torchrun \
     --rdzv-id=genrl.swarm.run \
     --rdzv-backend=c10d \
     --rdzv-endpoint="$MASTER_ADDR:$MASTER_PORT" \
-    "$ROOT/src/genrl_swarm/runner/launcher.py" \
+    "$ROOT/src/genrl/runner/launcher.py" \
     --config-path "$ROOT/recipes/$3" \
     --config-name $4

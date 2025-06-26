@@ -30,7 +30,7 @@ hydra:
     dir: ${log_dir}
 
 game_manager:
-  _target_: genrl_swarm.game.game_manager.SwarmGameManager
+  _target_: genrl.game.game_manager.SwarmGameManager
   max_stage: ${training.max_stage}
   max_round: ${training.max_round}
   log_dir: ${log_dir}
@@ -39,21 +39,21 @@ game_manager:
   run_mode: "train_and_evaluate"
   bootnodes: ${communications.initial_peers}
   game_state: 
-    _target_: genrl_swarm.state.game_state.GameState
+    _target_: genrl.state.game_state.GameState
     round: 0
     stage: 0
   reward_manager:
-    _target_: genrl_swarm.rewards.DefaultRewardManager
+    _target_: genrl.rewards.DefaultRewardManager
     reward_fn_store:
-      _target_: genrl_swarm.rewards.reward_store.RewardFnStore
+      _target_: genrl.rewards.reward_store.RewardFnStore
       max_rounds: ${training.max_round}
       reward_fn_stores:
-        - _target_: genrl_swarm.rewards.reward_store.RoundRewardFnStore
+        - _target_: genrl.rewards.reward_store.RoundRewardFnStore
           num_stages: ${training.max_stage}
           reward_fns:
-            - _target_: genrl_swarm.examples.rgym.rewards.RGRewards
+            - _target_: genrl.examples.rgym.rewards.RGRewards
   trainer:
-    _target_: genrl_swarm.examples.rgym.trainer.GRPOTrainerModule
+    _target_: genrl.examples.rgym.trainer.GRPOTrainerModule
     models:
       - _target_: transformers.AutoModelForCausalLM.from_pretrained
         pretrained_model_name_or_path: ${oc.env:MODEL_NAME, ${gpu_model_choice:${default_large_model_pool},${default_small_model_pool}}} 
@@ -68,19 +68,19 @@ game_manager:
     num_generations: ${training.num_generations}
     judge_base_url: ${eval.judge_base_url}
   data_manager:
-    _target_: genrl_swarm.examples.rgym.data.ReasoningGymDataManager
-    yaml_config_path: "genrl-swarm/src/genrl_swarm/examples/rgym/datasets.yaml"
+    _target_: genrl.examples.rgym.data.ReasoningGymDataManager
+    yaml_config_path: "genrl-swarm/src/genrl/examples/rgym/datasets.yaml"
     num_train_samples: 2
     num_evaluation_samples: 0
     system_prompt_id: 'default'
     seed: ${training.seed}
     num_transplant_trees: ${training.num_transplant_trees}
   communication:
-    _target_: genrl_swarm.communication.hivemind.hivemind_backend.HivemindBackend
+    _target_: genrl.communication.hivemind.hivemind_backend.HivemindBackend
     initial_peers: ${communications.initial_peers}
     identity_path: ${oc.env:IDENTITY_PATH,null}
   coordinator:
-    _target_: genrl_swarm.blockchain.coordinator.ModalSwarmCoordinator
+    _target_: genrl.blockchain.coordinator.ModalSwarmCoordinator
     web3_url: ${blockchain.alchemy_url}
     contract_address: ${blockchain.contract_address}
     org_id: ${blockchain.org_id}

@@ -24,30 +24,30 @@ hydra:
     dir: ${log_dir}
 
 game_manager:
-  _target_: genrl_swarm.game.game_manager.BaseGameManager
+  _target_: genrl.game.game_manager.BaseGameManager
   max_stage: ${training.num_stages}
   max_round: ${training.num_rounds}
   prune_K: ${training.train_batch_size}
   run_mode: "train_and_evaluate"
   game_state:
-    _target_: genrl_swarm.state.game_state.GameState
+    _target_: genrl.state.game_state.GameState
     round: 0
     stage: 0
   reward_manager:
-    _target_: genrl_swarm.rewards.DefaultRewardManager
+    _target_: genrl.rewards.DefaultRewardManager
     reward_fn_store:
-      _target_: genrl_swarm.rewards.reward_store.RewardFnStore
+      _target_: genrl.rewards.reward_store.RewardFnStore
       max_rounds: ${training.num_rounds}
       reward_fn_stores:
-        - _target_: genrl_swarm.rewards.reward_store.RoundRewardFnStore
+        - _target_: genrl.rewards.reward_store.RoundRewardFnStore
           num_stages: ${training.num_stages}
           reward_fns:
-            - _target_: genrl_swarm.examples.text_to_image.rewards.ScorerReward
+            - _target_: genrl.examples.text_to_image.rewards.ScorerReward
               model_id: ${training.reward_model_id}
               model_filename: ${training.reward_model_filename}
               aesthetic: true # can we set this based on rank? rank % 2 == 0
   trainer:
-    _target_: genrl_swarm.examples.text_to_image.ddpo_trainer.DDPOTrainer
+    _target_: genrl.examples.text_to_image.ddpo_trainer.DDPOTrainer
     config:
       _target_: trl.DDPOConfig
       num_epochs: ${training.num_rounds}
@@ -65,12 +65,12 @@ game_manager:
       use_lora: ${training.use_lora}
     output_dir: ${training.output_dir}
   data_manager:
-    _target_: genrl_swarm.examples.text_to_image.data.LocalDatasetManager
+    _target_: genrl.examples.text_to_image.data.LocalDatasetManager
     train_dataset_path: /workspace/captions/hps_v2_all.txt
     eval_dataset_path: /workspace/captions/hps_v2_all_eval.txt
     train_batch_size: ${training.sample_batch_size}
     num_eval_samples: ${training.log_eval_num_samples}
     sample_num_batches_per_round: ${training.sample_num_batches_per_round}
   communication:
-    _target_: genrl_swarm.communication.distributed.torch_comm.TorchBackend
+    _target_: genrl.communication.distributed.torch_comm.TorchBackend
 
