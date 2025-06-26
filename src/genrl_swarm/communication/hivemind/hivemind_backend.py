@@ -91,34 +91,37 @@ class HivemindBackend(Communication):
 
     def all_gather_object(self, obj: Any) -> Dict[str| int, Any]:
         key = str(self.step_)
-        _ = self.dht.get_visible_maddrs(latest=True)
-        obj_bytes = to_bytes(obj)
-        self.dht.store(
-            key,
-            subkey=str(self.dht.peer_id),
-            value=obj_bytes,
-            expiration_time=get_dht_time() + self.timeout,
-            beam_size=self.beam_size,  
-        )
-        
-        time.sleep(1)
-        t_ = time.monotonic()
-        while True:
-            output_, _ = self.dht.get(key, beam_size=self.beam_size, latest=True)
-            if len(output_) >= self.world_size:
-                break
-            else:
-                if time.monotonic() - t_ > self.timeout:
-                    raise RuntimeError(
-                        f"Failed to obtain {self.world_size} values for {key} within timeout."
-                    )
-        self.step_ += 1
+        try:
+            _ = self.dht.get_visible_maddrs(latest=True)
+            obj_bytes = to_bytes(obj)
+            self.dht.store(
+                key,
+                subkey=str(self.dht.peer_id),
+                value=obj_bytes,
+                expiration_time=get_dht_time() + self.timeout,
+                beam_size=self.beam_size,  
+            )
+            
+            time.sleep(1)
+            t_ = time.monotonic()
+            while True:
+                output_, _ = self.dht.get(key, beam_size=self.beam_size, latest=True)
+                if len(output_) >= self.world_size:
+                    break
+                else:
+                    if time.monotonic() - t_ > self.timeout:
+                        raise RuntimeError(
+                            f"Failed to obtain {self.world_size} values for {key} within timeout."
+                        )
+            self.step_ += 1
 
-        tmp = sorted(
-            [(key, from_bytes(value.value)) for key, value in output_.items()],
-            key=lambda x: x[0],
-        )
-        return {key: value for key, value in tmp}
+            tmp = sorted(
+                [(key, from_bytes(value.value)) for key, value in output_.items()],
+                key=lambda x: x[0],
+            )
+            return {key: value for key, value in tmp}
+        except BlockingIOError:
+            return {str(self.dht.peer_id): obj}
 
     def get_id(self):
         return str(self.dht.peer_id)
