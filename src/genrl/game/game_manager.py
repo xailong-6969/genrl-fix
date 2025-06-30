@@ -161,20 +161,19 @@ class GameManager(abc.ABC):
             game_tree_brancher=game_tree_brancher,
         )  # Prepare game trees within the game state for the initial round's batch of data
         # Loop through rounds until end of the game is hit
-        while not self.end_of_game():
-            try:
+        try:
+            while not self.end_of_game():
                 get_logger().info(
                     f"Starting round: {self.state.round}/{getattr(self, 'max_round', None)}."
                 )
                 self.run_game_round()  # Loops through stages until end of round signal is received
-            except:
-                get_logger().exception(
-                    "Exception occurred during game run.", stack_info=True
-                )
-                break
-
-        self._hook_after_game()
-        self.trainer.cleanup()
+        except:
+            get_logger().exception(
+                "Exception occurred during game run.", stack_info=True
+            )
+        finally:
+            self._hook_after_game()
+            self.trainer.cleanup()
 
 
 class DefaultGameManagerMixin:
