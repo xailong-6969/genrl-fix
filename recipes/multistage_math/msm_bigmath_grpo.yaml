@@ -25,7 +25,7 @@ game_manager:
             - _target_: genrl.examples.multistage_math.rewards.Stage1Rewards
             - _target_: genrl.examples.multistage_math.rewards.Stage2Rewards
   trainer:
-    _target_: genrl.examples.multistage_math.trainer.GRPOTrainerModule
+    _target_: genrl.trainer.grpo_trainer.GRPOLanguageTrainerModule
     models:
       - _target_: transformers.AutoModelForCausalLM.from_pretrained
         pretrained_model_name_or_path: Gensyn/Qwen2.5-0.5B-Instruct

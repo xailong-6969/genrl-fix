@@ -1,13 +1,12 @@
+import contextlib
 import gc
 import os
 from collections import defaultdict
-from typing import Any, Dict, List, Tuple
+from typing import Any, List
 
 import torch
 import torch.utils.data
-from torch import nn
-from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig, Trainer
-from transformers.utils import is_accelerate_available, is_sagemaker_mp_enabled
+from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 from trl.data_utils import apply_chat_template
 from trl.models import create_reference_model
 from trl.trainer.grpo_config import GRPOConfig
@@ -18,11 +17,8 @@ from genrl.rewards import RewardManager
 from genrl.state import GameState
 from genrl.trainer import TrainerModule
 
-if is_accelerate_available():
-    from accelerate.utils import DistributedType
 
-
-class GRPOTrainerModule(TrainerModule, LoggerMixin):
+class GRPOLanguageTrainerModule(TrainerModule, LoggerMixin):
     """
     Trainer for the Group Relative Policy Optimization (GRPO) method.
     Implements the TrainerModule interface defined in base_trainer.py.
@@ -51,6 +47,9 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
             if isinstance(config, GRPOConfig)
             else GRPOConfig(config) if config else GRPOConfig()
         )
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(), lr=self.args.learning_rate
+        )
 
         # Tokenizers
         self.processing_class = kwargs.get("processing_class", None)
@@ -59,20 +58,41 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         self.callbacks = kwargs.get("callbacks", [])
         self.save_dir = kwargs.get("log_dir", "./outputs")
         self.global_step = 0
-        self.num_generations = kwargs.get("num_generations", 1)
+        self.num_generations = kwargs.get("num_generations", 2)
+        assert (
+            self.num_generations > 1
+        ), f"For GRPO training, number of generations must be > 1, got {self.num_generations}"
+        self.epsilon = kwargs.get("epsilon", 0.2)
+        self.epsilon_high = kwargs.get("epsilon_high", 0.28)
+        self.beta = kwargs.get("beta", 0.0)
+        self.enable_gradient_checkpointing = kwargs.get(
+            "enable_gradient_checkpointing", True
+        )
+
+        if torch.cuda.is_available():
+            self.device = torch.device("cuda")
+            self.autocast = torch.amp.autocast(
+                device_type=self.device.type, enabled=self.args.fp16
+            )
+        elif torch.backends.mps.is_available():
+            self.device = torch.device("mps")
+            self.autocast = contextlib.nullcontext()
+        else:
+            self.device = torch.device("cpu")
+            self.autocast = contextlib.nullcontext()
 
         # Initialize core components
-        self._initialize_model()
+        self._initialize_model(self.enable_gradient_checkpointing)
         self._initialize_tokenizers()
         self._initialize_metrics()
         self._initialize_generation_config()
-        self._initialize_trainer()
         self.init_tracker(self.save_dir, log_with=kwargs.get("log_with", None))
 
-    def _initialize_model(self):
+    def _initialize_model(self, enable_gradient_checkpointing):
         """Initialize the model and reference model."""
-        # Set up model hyperparameters
-        self.beta = self.args.beta
+        self.model = self.model.to(self.device)
+        if enable_gradient_checkpointing:
+            self.model.gradient_checkpointing_enable()
 
         # Reference model setup
         if self.beta == 0.0:
@@ -106,19 +126,6 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
             min_p=self.args.min_p,
             repetition_penalty=self.args.repetition_penalty,
         )
-
-    def _initialize_trainer(self):
-        self.trainer = Trainer(
-            model=self.model,
-            args=self.args,
-            processing_class=self.processing_class,
-            callbacks=self.callbacks,
-            optimizers=(
-                torch.optim.Adam(self.model.parameters(), lr=self.args.learning_rate),
-                None,
-            ),
-        )
-        self.trainer.compute_loss = self.compute_loss
 
     def _process_inputs(self, inputs, with_template=True, for_training=False):
         if hasattr(inputs, "to_dict"):
@@ -311,12 +318,8 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         coef_1 = torch.exp(per_token_logps - old_per_token_logps)
         coef_2 = torch.clamp(
             coef_1,
-            1 - self.args.epsilon,
-            (
-                1 + self.args.epsilon_high
-                if self.args.epsilon_high is not None
-                else self.args.epsilon
-            ),
+            1 - self.epsilon,
+            1 + self.epsilon_high if self.epsilon_high is not None else self.epsilon,
         )
         advantages = advantages.unsqueeze(dim=-1)
 
@@ -364,7 +367,7 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         """
         self.model.train()
         global_step = self.global_step
-        for stage in range(state.stage - 1):
+        for stage in range(state.stage):
             global_step = self.step(
                 stage, state, data_manager, reward_manager, global_step
             )
@@ -425,60 +428,18 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
             advantages = rewards - rewards.mean(dim=1, keepdim=True)
             if rewards.shape[1] > 1:
                 advantages /= rewards.std(dim=1, keepdim=True) + 1e-8
-        advantages = torch.flatten(advantages)
+        advantages = torch.flatten(advantages).to(self.model.device)
 
         model_inputs["advantages"] = advantages.squeeze(dim=-1)
         model_inputs["old_per_token_logps"] = None
 
-        do_sync_step = global_step % self.args.gradient_accumulation_steps == 0
-        self.trainer.accelerator.gradient_state._set_sync_gradients(do_sync_step)
-        loss = self.trainer.training_step(self.model, model_inputs)
+        with self.autocast:
+            loss = self.compute_loss(self.model, model_inputs)
 
-        if do_sync_step:
-            # Since we perform prefetching, we need to manually set sync_gradients to True
-            self.trainer.accelerator.gradient_state._set_sync_gradients(True)
+        loss.backward()
+        self.optimizer.step()
+        self.model.zero_grad()
 
-            # Gradient clipping
-            if self.args.max_grad_norm is not None and self.args.max_grad_norm > 0:
-                if is_sagemaker_mp_enabled() and self.args.fp16:
-                    _grad_norm = self.trainer.optimizer.clip_master_grads(
-                        self.args.max_grad_norm
-                    )
-                elif self.trainer.use_apex:
-                    # Revert to normal clipping otherwise, handling Apex or full precision
-                    _grad_norm = nn.utils.clip_grad_norm_(
-                        amp.master_params(self.trainer.optimizer),
-                        self.args.max_grad_norm,
-                    )
-                else:
-                    _grad_norm = self.trainer.accelerator.clip_grad_norm_(
-                        self.model.parameters(),
-                        self.args.max_grad_norm,
-                    )
-
-                if (
-                    is_accelerate_available()
-                    and self.trainer.accelerator.distributed_type
-                    == DistributedType.DEEPSPEED
-                ):
-                    grad_norm = self.model.get_global_grad_norm()
-                    # In some cases the grad norm may not return a float
-                    if hasattr(grad_norm, "item"):
-                        grad_norm = grad_norm.item()
-                else:
-                    grad_norm = _grad_norm
-
-            self.trainer.optimizer.step()
-
-            if not self.trainer.accelerator.optimizer_step_was_skipped:
-                # Delay optimizer scheduling until metrics are generated
-                if self.trainer.lr_scheduler is not None and not isinstance(
-                    self.trainer.lr_scheduler,
-                    torch.optim.lr_scheduler.ReduceLROnPlateau,
-                ):
-                    self.trainer.lr_scheduler.step()
-
-            self.model.zero_grad()
         metrics = {"train/loss": loss.cpu().mean().item()}
         metrics.update({"train/rewards": rewards.cpu().mean().item()})
         self.log(metrics, global_step)
@@ -491,27 +452,8 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
     def evaluate(
         self, state: GameState, data_manager: DataManager, reward_manager: RewardManager
     ):
-        self.model.eval()
-        eval_data = data_manager.get_eval_data()
-        batch = eval_data  # next(iter(eval_data_loader))
-
-        completions, completion_ids = self.generate(batch, return_completion_ids=True)
-
-        # TODO: Come back and add evaluation fxn to the reward manager
-        reward_fn = reward_manager.dispatch_reward_fn(state.round, state.stage)
-        rewards = reward_fn.evaluation(batch["prompt"], completions)
-        advantages = (rewards - rewards.mean(dim=1, keepdim=True)) / (
-            rewards.std(dim=1, keepdim=True) + 1e-8
-        )
-
-        batch["completion_ids"] = completion_ids
-        batch["completion_mask"] = completion_ids != self.tokenizer.eos_token_id
-        batch["advantages"] = advantages
-        batch["old_per_token_logps"] = None
-
-        loss, metrics = self.compute_loss(batch, mode="eval", return_metrics=True)
-        self.log(metrics, game_state.round)
-
+        pass
+    
     def save(self, save_dir: str) -> None:
         """
         Save the model and trainer state to the given directory.
@@ -533,7 +475,7 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
         )
 
     @classmethod
-    def load(cls, load_dir: str) -> "GRPOTrainerModule":
+    def load(cls, load_dir: str) -> "GRPOLanguageTrainerModule":
         """
         Load a trainer module from the given directory.
 
@@ -560,6 +502,8 @@ class GRPOTrainerModule(TrainerModule, LoggerMixin):
     def cleanup_step(self):
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+        elif torch.mps.is_available():
+            torch.mps.empty_cache()
         gc.collect()
 
     def cleanup(self):

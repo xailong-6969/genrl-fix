@@ -1,9 +1,8 @@
-log_dir: /home/gensyn/shared/gab/genrl_testing
+log_dir: ${oc.env:ROOT,.}/logs
 
 training:
   max_round: 500
   max_stage: 1
-  prune_K: 5
   num_generations: 3
   seed: 561
 
@@ -11,7 +10,6 @@ game_manager:
   _target_: genrl.game.game_manager.BaseGameManager
   max_stage: ${training.max_stage}
   max_round: ${training.max_round}
-  prune_K: ${training.prune_K}
   game_state: 
     _target_: genrl.state.GameState
     round: 0
@@ -27,10 +25,10 @@ game_manager:
           reward_fns:
             - _target_: genrl.examples.rgym.rewards.RGRewards
   trainer:
-    _target_: genrl.examples.rgym.trainer.GRPOTrainerModule
+    _target_: genrl.trainer.grpo_trainer.GRPOLanguageTrainerModule
     models:
       - _target_: transformers.AutoModelForCausalLM.from_pretrained
-        pretrained_model_name_or_path: /home/gensyn/shared/models/qwen-2.5-0.5B-Instruct
+        pretrained_model_name_or_path: Gensyn/Qwen2.5-0.5B-Instruct
         config: trl.trainer.GRPOConfig
     epsilon: 0.2
     epsilon_high: 0.28
