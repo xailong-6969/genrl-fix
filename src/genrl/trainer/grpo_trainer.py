@@ -2,6 +2,8 @@ import contextlib
 import gc
 import os
 from collections import defaultdict
+from datetime import datetime
+import warnings
 from typing import Any, List
 
 import torch
@@ -38,7 +40,7 @@ class GRPOLanguageTrainerModule(TrainerModule, LoggerMixin):
 
         self.model = models[
             0
-        ]  # TODO(Discuss): How to settup multiple models here? Should be tethered to agent index that'll be given by gamestate. Maybe loop here and add a lil model ID datum to the gamestate?
+        ]  # TODO(Discuss): How to setup multiple models here? Should be tethered to agent index that'll be given by gamestate. Maybe loop here and add a lil model ID datum to the gamestate?
 
         # Configuration parameters
         config = kwargs.get("config", None)
@@ -56,12 +58,12 @@ class GRPOLanguageTrainerModule(TrainerModule, LoggerMixin):
 
         # Additional parameters
         self.callbacks = kwargs.get("callbacks", [])
-        self.save_dir = kwargs.get("log_dir", "./outputs")
+        self.save_dir = kwargs.get("log_dir", f"./outputs/run_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
         self.global_step = 0
         self.num_generations = kwargs.get("num_generations", 2)
-        assert (
-            self.num_generations > 1
-        ), f"For GRPO training, number of generations must be > 1, got {self.num_generations}"
+        if self.num_generations <= 1:
+            warnings.warn(f"num_generations should be > 1 for GRPO training. Using default value 2.")
+            self.num_generations = 2
         self.epsilon = kwargs.get("epsilon", 0.2)
         self.epsilon_high = kwargs.get("epsilon_high", 0.28)
         self.beta = kwargs.get("beta", 0.0)
@@ -385,19 +387,12 @@ class GRPOLanguageTrainerModule(TrainerModule, LoggerMixin):
         global_step += 1
 
         # Prepare stage's inputs
-        stage_inputs = state.get_stage_state(
-            stage
-        )  # Fetches the current world state for all agents
-        stage_inputs, index_mapping = data_manager.prepare_input(
-            stage_inputs, stage
-        )  # Maps game tree states to model ingestable inputs
+        stage_inputs = state.get_stage_state(stage)
+        stage_inputs, index_mapping = data_manager.prepare_input(stage_inputs, stage)
         assert stage_inputs is not None, f"No inputs found for stage {stage}"
-        # Unflatten stage's outputs
         stage_actions = state.get_stage_actions(stage)
         stage_outputs = [
-            stage_actions[index_mapping[idx][0]][index_mapping[idx][1]][
-                index_mapping[idx][2]
-            ]
+            stage_actions[index_mapping[idx][0]][index_mapping[idx][1]][index_mapping[idx][2]]
             for idx, _ in enumerate(index_mapping)
         ]
         assert stage_outputs is not None, f"No outputs found for stage {stage}"
@@ -416,13 +411,28 @@ class GRPOLanguageTrainerModule(TrainerModule, LoggerMixin):
             processed_outputs.attention_mask.to(self.model.device),
         )
 
+        # Process rewards with shape fix and participation bonus
         rewards = reward_manager[stage]
         rewards = [
             rewards[index_mapping[idx][0]][index_mapping[idx][1]][index_mapping[idx][2]]
             for idx, _ in enumerate(index_mapping)
         ]
+        rewards_2d = []
+        for r in rewards:
+            if isinstance(r, (int, float)):
+                # Add base participation reward (e.g., 1 point per round) and performance
+                base_reward = 1.0
+                perf_reward = max(0, r)  # Ensure non-negative performance reward
+                rewards_2d.append([base_reward + perf_reward] * self.num_generations)
+            elif len(r) == 1:
+                rewards_2d.append([1.0 + r[0]] * self.num_generations)
+            else:
+                rewards_2d.append([1.0 + val for val in r[:self.num_generations]])
+        rewards = torch.tensor(rewards_2d)
+
         assert rewards is not None, f"No rewards found for stage {stage}"
-        rewards = torch.tensor(rewards)
+        assert rewards.dim() == 2 and rewards.size(1) == self.num_generations, \
+            f"Rewards shape {rewards.shape} does not match expected [batch_size, {self.num_generations}]"
 
         with torch.no_grad():
             advantages = rewards - rewards.mean(dim=1, keepdim=True)
@@ -453,7 +463,7 @@ class GRPOLanguageTrainerModule(TrainerModule, LoggerMixin):
         self, state: GameState, data_manager: DataManager, reward_manager: RewardManager
     ):
         pass
-    
+
     def save(self, save_dir: str) -> None:
         """
         Save the model and trainer state to the given directory.
