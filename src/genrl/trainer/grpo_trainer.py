@@ -377,7 +377,7 @@ class GRPOLanguageTrainerModule(TrainerModule, LoggerMixin):
         # return for tensorboard
         metrics = {
             "loss": loss.item(),
-            "kl": mean_kl.item() if self.beta != 0.0 else 0.0, # Report 0.0 if KL not calculated
+            "kl": mean_kl.item() if self.beta != 0.0 and mean_kl is not None else 0.0, # Report 0.0 if KL not calculated or None
             "clip_ratio": clip_ratio.item(),
         }
 
@@ -534,9 +534,9 @@ class GRPOLanguageTrainerModule(TrainerModule, LoggerMixin):
                 base_reward = 1.0
                 perf_reward = max(0, r)  # Ensure non-negative performance reward
                 rewards_2d.append([base_reward + perf_reward] * self.num_generations)
-            elif isinstance(r, list) and len(r) == 1:
+            elif isinstance(r, list) and len(r) == 1: # Explicitly check if it's a list with one item
                 rewards_2d.append([1.0 + r[0]] * self.num_generations)
-            elif isinstance(r, list) and len(r) > 1:
+            elif isinstance(r, list) and len(r) > 1: # Explicitly check if it's a list with more than one item
                 rewards_2d.append([1.0 + val for val in r[:self.num_generations]])
             else:
                 # Handle cases where reward might be None or unexpected format
@@ -571,6 +571,14 @@ class GRPOLanguageTrainerModule(TrainerModule, LoggerMixin):
         # Only perform backward pass and optimizer step if loss is not NaN/Inf and is not 0
         if not torch.isnan(loss) and not torch.isinf(loss) and loss.item() != 0.0:
             loss.backward()
+            
+            # --- START OF NEW ADDITION FOR NUMERICAL STABILITY ---
+            # Gradient clipping to prevent exploding gradients (a common cause of inf/nan in probability tensors)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+            # You might need to experiment with max_norm. Common values are 0.5, 1.0, 5.0.
+            # If the issue persists, also consider reducing your learning_rate in GRPOConfig.
+            # --- END OF NEW ADDITION ---
+
             self.optimizer.step()
             self.model.zero_grad()
         else:
